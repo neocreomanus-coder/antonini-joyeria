@@ -1,0 +1,80 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ── Tailwind custom theme ── */
+@theme inline {
+  --color-background:  oklch(1 0 0);
+  --color-foreground:  oklch(0.15 0.02 60);
+  --color-card:        oklch(1 0 0);
+  --color-card-foreground: oklch(0.15 0.02 60);
+  --color-primary:     oklch(0.22 0.08 160);
+  --color-primary-foreground: oklch(1 0 0);
+  --color-secondary:   oklch(0.96 0.01 60);
+  --color-secondary-foreground: oklch(0.22 0.08 160);
+  --color-muted:       oklch(0.96 0.01 60);
+  --color-muted-foreground: oklch(0.52 0.02 60);
+  --color-accent:      oklch(0.72 0.10 78);
+  --color-accent-foreground: oklch(1 0 0);
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-border:      oklch(0.90 0.01 60);
+  --color-input:       oklch(0.90 0.01 60);
+  --color-ring:        oklch(0.22 0.08 160);
+  --radius: 0.75rem;
+  --font-sans: 'Roboto', sans-serif;
+  --font-serif: 'Roboto', sans-serif;
+}
+
+/* ── Marquee animation ── */
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee { display: inline-block; animation: marquee 28s linear infinite; }
+
+/* ── Scrollbar hide ── */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Smooth scroll ── */
+html { scroll-behavior: smooth; }
+
+/* ── Brand utilities (all green, no orange) ── */
+.bg-brand-green       { background-color: oklch(0.22 0.08 160) !important; }
+.bg-brand-green-light { background-color: oklch(0.30 0.08 160) !important; }
+.bg-brand-green-dark  { background-color: oklch(0.16 0.06 160) !important; }
+.bg-brand-gold        { background-color: oklch(0.72 0.10 78) !important; }
+.bg-brand-gold-light  { background-color: oklch(0.80 0.10 78) !important; }
+.text-brand-green       { color: oklch(0.22 0.08 160) !important; }
+.text-brand-green-light { color: oklch(0.30 0.08 160) !important; }
+.text-brand-gold        { color: oklch(0.72 0.10 78) !important; }
+.text-brand-gold-light  { color: oklch(0.80 0.10 78) !important; }
+.border-brand-green { border-color: oklch(0.22 0.08 160) !important; }
+.border-brand-gold  { border-color: oklch(0.72 0.10 78) !important; }
+.ring-brand-green   { --tw-ring-color: oklch(0.22 0.08 160); }
+.hover\:bg-brand-green-light:hover { background-color: oklch(0.30 0.08 160) !important; }
+.hover\:text-brand-green:hover     { color: oklch(0.22 0.08 160) !important; }
+.hover\:border-brand-green:hover   { border-color: oklch(0.22 0.08 160) !important; }
+.focus\:border-brand-green:focus   { border-color: oklch(0.22 0.08 160) !important; }
+
+/* ── Mobile tap targets ── */
+@media (max-width: 768px) {
+  button, a { min-height: 44px; }
+  .min-h-auto { min-height: auto !important; }
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Roboto', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, h5, h6 { font-family: 'Roboto', sans-serif; }
+  .font-serif { font-family: 'Roboto', sans-serif !important; }
+  .font-sans  { font-family: 'Roboto', sans-serif !important; }
+}
+
+@layer components {
+  .container { @apply mx-auto px-4; max-width: 1280px; }
+  .flex { min-width: 0; min-height: 0; }
+}

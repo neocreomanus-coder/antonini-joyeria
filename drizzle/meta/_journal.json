@@ -1,0 +1,76 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1784892483184,
+      "tag": "0000_unknown_mattie_franklin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1784892634238,
+      "tag": "0001_vengeful_betty_brant",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1785709834604,
+      "tag": "0002_hot_george_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1785813425272,
+      "tag": "0003_opposite_cerise",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1786499359554,
+      "tag": "0004_brainy_stranger",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1787194544575,
+      "tag": "0005_acoustic_dreaming_celestial",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787208683875,
+      "tag": "0006_sturdy_harry_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787208895359,
+      "tag": "0007_faithful_frightful_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1787251137045,
+      "tag": "0008_swift_tyrannus",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1787262906274,
+      "tag": "0009_sticky_chimera",
+      "breakpoints": true
+    }
+  ]
+}

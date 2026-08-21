@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `originalPrice` decimal(12,2);
