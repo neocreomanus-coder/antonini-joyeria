@@ -7,6 +7,12 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   storageDir: path.resolve(process.env.STORAGE_DIR ?? "./storage"),
 
+  // Cloudflare R2
+  r2Endpoint: process.env.R2_ENDPOINT ?? "",
+  r2AccessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+  r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+  r2Bucket: process.env.R2_BUCKET ?? "",
+
   // Legacy template helpers remain compile-compatible but are not required by
   // the Antonini storefront/admin self-hosted flow.
   oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",

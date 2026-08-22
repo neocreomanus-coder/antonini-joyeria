@@ -115,7 +115,24 @@ async function copyDatabase() {
         const chunk = sourceRows.slice(i, i + chunkSize);
         const rowPlaceholder = `(${columns.map(() => "?").join(",")})`;
         const placeholders = chunk.map(() => rowPlaceholder).join(",");
-        const values = chunk.flatMap(row => columns.map(column => row[column]));
+        const values = chunk.flatMap(row =>
+          columns.map(column => {
+            const value = row[column];
+
+            if (
+              value === null ||
+              value === undefined ||
+              Buffer.isBuffer(value) ||
+              value instanceof Date
+            ) {
+              return value;
+            }
+
+            return typeof value === "object"
+              ? JSON.stringify(value)
+              : value;
+          })
+        );
         await target.query(
           `INSERT INTO \`${table}\` (${quotedColumns}) VALUES ${placeholders}`,
           values,
