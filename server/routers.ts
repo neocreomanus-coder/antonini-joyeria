@@ -66,7 +66,7 @@ const productsRouter = router({
   create: adminProcedure.input(z.object({
     name: z.string().min(1), slug: z.string().min(1),
     description: z.string().optional(), material: z.string().optional(), materials: z.array(z.string()).optional(),
-    basePrice: z.string(), originalPrice: z.string().nullable().optional(), categoryId: z.number(),
+    basePrice: z.string(), originalPrice: z.string().nullable().optional(), reference: z.string().trim().max(100).nullable().optional(), categoryId: z.number(),
     featured: z.boolean().optional(), imageUrls: z.array(z.string()).optional(), stock: z.number().optional(),
     homeSection: z.string().optional(),
     volumeMl: z.number().optional(),
@@ -89,7 +89,7 @@ const productsRouter = router({
     id: z.number(),
     name: z.string().optional(), slug: z.string().optional(),
     description: z.string().optional(), material: z.string().optional(), materials: z.array(z.string()).optional(),
-    basePrice: z.string().optional(), originalPrice: z.string().nullable().optional(), categoryId: z.number().optional(),
+    basePrice: z.string().optional(), originalPrice: z.string().nullable().optional(), reference: z.string().trim().max(100).nullable().optional(), categoryId: z.number().optional(),
     active: z.boolean().optional(), featured: z.boolean().optional(),
     homeSection: z.string().optional(),
     volumeMl: z.number().optional(),
@@ -153,11 +153,42 @@ const cartRouter = router({
     }),
 });
 
+// ── Promotional codes router ──────────────────────────────────────────────────
+const promoCodesRouter = router({
+  validate: publicProcedure.input(z.object({ code: z.string().trim().min(1).max(64) })).query(async ({ input }) => {
+    const promo = await db.getActivePromoCode(input.code);
+    if (!promo) return { valid: false as const };
+    return { valid: true as const, code: promo.code, discountPercent: promo.discountPercent };
+  }),
+
+  adminList: adminProcedure.query(() => db.getPromoCodes()),
+
+  create: adminProcedure.input(z.object({
+    code: z.string().trim().min(2).max(64),
+    discountPercent: z.number().int().min(1).max(90),
+    active: z.boolean().optional(),
+  })).mutation(async ({ input }) => {
+    await db.createPromoCode(input);
+    return { success: true };
+  }),
+
+  update: adminProcedure.input(z.object({
+    id: z.number(),
+    code: z.string().trim().min(2).max(64).optional(),
+    discountPercent: z.number().int().min(1).max(90).optional(),
+    active: z.boolean().optional(),
+  })).mutation(async ({ input: { id, ...data } }) => {
+    await db.updatePromoCode(id, data);
+    return { success: true };
+  }),
+});
+
 // ── Orders router ─────────────────────────────────────────────────────────────
 const ordersRouter = router({
   create: publicProcedure.input(z.object({
     guestEmail: z.string().email().optional(),
-    total: z.string(), subtotal: z.string(),
+    total: z.string().optional(), subtotal: z.string().optional(),
+    promoCode: z.string().trim().max(64).optional(),
     shippingAddress: z.object({
       fullName: z.string(), address: z.string(), city: z.string(),
       department: z.string(), phone: z.string(), notes: z.string().optional(),
@@ -167,18 +198,36 @@ const ordersRouter = router({
     sessionId: z.string().optional(),
     items: z.array(z.object({
       productId: z.number(), variantId: z.number().optional(),
-      quantity: z.number(), unitPrice: z.string(),
+      quantity: z.number().int().min(1).max(99), unitPrice: z.string(),
       productSnapshot: z.object({
-        name: z.string(), material: z.string(), imageUrl: z.string(), variantLabel: z.string().optional(),
+        name: z.string(), material: z.string(), imageUrl: z.string(), reference: z.string().optional(), variantLabel: z.string().optional(),
       }),
     })),
   })).mutation(async ({ ctx, input }) => {
     const userId = ctx.user?.id;
-    const createdOrder = await db.createOrder({ ...input, userId });
+    let pricing: db.PromoPricing;
+    try {
+      pricing = await db.calculateOrderPricing(input.items, input.promoCode);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No fue posible validar el código promocional";
+      throw new TRPCError({ code: "BAD_REQUEST", message });
+    }
+    const verifiedItems = input.items.map((item, index) => ({ ...item, unitPrice: pricing.unitPrices[index] ?? item.unitPrice }));
+    const createdOrder = await db.createOrder({
+      ...input,
+      ...pricing,
+      items: verifiedItems,
+      userId,
+    });
     void notifyTelegramAboutOrder({
       orderId: createdOrder.id,
+      orderNumber: createdOrder.orderNumber,
       paymentMethod: input.paymentMethod,
-      total: input.total,
+      total: pricing.total,
+      popupDiscountPercent: pricing.popupDiscountPercent,
+      popupDiscountAmount: pricing.popupDiscountAmount,
+      promoCode: pricing.promoCode,
+      promoDiscountAmount: pricing.promoDiscountAmount,
       customerName: input.shippingAddress.fullName,
       customerPhone: input.shippingAddress.phone,
       notes: input.shippingAddress.notes,
@@ -186,7 +235,7 @@ const ordersRouter = router({
     });
     if (userId) await db.clearCart({ userId });
     else if (input.sessionId) await db.clearCart({ sessionId: input.sessionId });
-    return { orderId: createdOrder.id, paymentToken: createdOrder.publicToken, paymentMethod: input.paymentMethod, orderNumber: `ANT-${String(createdOrder.id).padStart(6, "0")}` };
+    return { orderId: createdOrder.id, paymentToken: createdOrder.publicToken, paymentMethod: input.paymentMethod, orderNumber: createdOrder.orderNumber };
   }),
 
   paymentInfo: publicProcedure.input(z.object({ token: z.string().min(24).max(64) })).query(async ({ input }) => {
@@ -198,7 +247,7 @@ const ordersRouter = router({
   confirmWompiReceipt: publicProcedure.input(z.object({ token: z.string().min(24).max(64) })).mutation(async ({ input }) => {
     const order = await db.markWompiReceiptSent(input.token);
     if (!order || order.paymentMethod !== "wompi") throw new TRPCError({ code: "NOT_FOUND", message: "Pago Wompi no encontrado" });
-    return { orderId: order.id, orderNumber: `ANT-${String(order.id).padStart(6, "0")}` };
+    return { orderId: order.id, orderNumber: db.formatOrderNumber(order) };
   }),
 
   track: publicProcedure.input(z.object({ orderNumber: z.string().min(4).max(32) })).query(async ({ input }) => {
@@ -229,6 +278,15 @@ const ordersRouter = router({
     return { ...order, items };
   }),
 
+  adminGetByOrderNumber: adminProcedure.input(z.object({
+    orderNumber: z.string().trim().regex(/^ANT-\d{6,}$/i),
+  })).query(async ({ input }) => {
+    const order = await db.getOrderByNumber(input.orderNumber);
+    if (!order) throw new TRPCError({ code: "NOT_FOUND" });
+    const items = await db.getOrderItems(order.id);
+    return { ...order, items };
+  }),
+
   updateStatus: adminProcedure.input(z.object({
     id: z.number(),
     status: z.enum(["pendiente", "despachado", "entregado"]),
@@ -237,8 +295,12 @@ const ordersRouter = router({
   updateShipment: adminProcedure.input(z.object({
     id: z.number(),
     status: z.enum(["pendiente", "despachado", "entregado"]),
+    shippingCarrier: z.enum(["coordinadora", "interrapidisimo"]),
     interrapidisimoGuide: z.string().max(100).optional().nullable(),
   })).mutation(({ input }) => db.updateOrderShipment(input.id, input)),
+
+  delete: adminProcedure.input(z.object({ id: z.number() }))
+    .mutation(({ input }) => db.deleteOrder(input.id)),
 });
 
 // ── Testimonials & Newsletter ─────────────────────────────────────────────────
@@ -434,6 +496,7 @@ export const appRouter = router({
   categories: categoriesRouter,
   products: productsRouter,
   cart: cartRouter,
+  promoCodes: promoCodesRouter,
   orders: ordersRouter,
   testimonials: testimonialsRouter,
   newsletter: newsletterRouter,

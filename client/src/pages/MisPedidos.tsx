@@ -61,7 +61,7 @@ export default function MisPedidos() {
                           <Package className="w-6 h-6 text-[oklch(0.62_0.12_75)]" />
                         </div>
                         <div>
-                          <p className="font-semibold text-[oklch(0.18_0.02_60)]">Pedido {formatOrderNumber(order.id)}</p>
+                          <p className="font-semibold text-[oklch(0.18_0.02_60)]">Pedido {formatOrderNumber(order.orderNumber ?? order.id)}</p>
                           <p className="text-sm text-[oklch(0.52_0.02_60)]">{new Date(order.createdAt).toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric" })}</p>
                         </div>
                       </div>

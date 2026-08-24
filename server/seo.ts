@@ -111,6 +111,50 @@ export async function getSeoMeta(
     };
   }
 
+  // ── Páginas institucionales ───────────────────────────────────────────────
+  const institutionalPages: Record<
+    string,
+    { title: string; description: string }
+  > = {
+    "/quienes-somos": {
+      title: "Quiénes somos | Antonini Joyería",
+      description:
+        "Conoce Antonini Joyería, nuestra esencia, atención personalizada y compromiso con clientes en toda Colombia.",
+    },
+    "/terminos-y-condiciones": {
+      title: "Términos y condiciones | Antonini Joyería",
+      description:
+        "Consulta los términos y condiciones aplicables a compras, pagos, confirmaciones, entregas y pedidos en Antonini Joyería.",
+    },
+    "/cambios-y-devoluciones": {
+      title: "Cambios y devoluciones | Antonini Joyería",
+      description:
+        "Consulta las condiciones y procedimientos para cambios, devoluciones, garantías y reembolsos en Antonini Joyería.",
+    },
+    "/politica-de-envios": {
+      title: "Política de envíos | Antonini Joyería",
+      description:
+        "Conoce los tiempos, modalidades, transportadoras, costos y condiciones de envío de Antonini Joyería en Colombia.",
+    },
+  };
+
+  const institutional =
+    institutionalPages[pathnameOnly.replace(/\/$/, "")];
+
+  if (institutional) {
+    const canonical =
+      `${SITE_URL}${pathnameOnly.replace(/\/$/, "")}`;
+
+    return {
+      title: institutional.title,
+      description: institutional.description,
+      canonical,
+      image: DEFAULT_IMAGE,
+      type: "website",
+      robots: INDEX_ROBOTS,
+    };
+  }
+
   // ── Catálogo general ─────────────────────────────────────────────────────
   if (
     pathnameOnly === "/catalogo" ||

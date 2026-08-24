@@ -7,7 +7,9 @@ import {
   categories,
   newsletterSubscribers,
   orderItems,
+  orderSequences,
   orders,
+  promoCodes,
   productVariants,
   products,
   testimonials,
@@ -15,6 +17,7 @@ import {
 } from "../drizzle/schema";
 import { siteConfig } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { getGenderFilterValues } from "../shared/genderFiltering";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -120,7 +123,14 @@ export async function getProducts(opts?: { categoryId?: number; search?: string;
   if (opts?.categoryId) conditions.push(eq(products.categoryId, opts.categoryId));
   if (opts?.featured) conditions.push(eq(products.featured, true));
   if (opts?.homeSection) conditions.push(eq(products.homeSection, opts.homeSection) as ReturnType<typeof eq>);
-  if (opts?.gender) conditions.push(eq(products.gender, opts.gender) as ReturnType<typeof eq>);
+  if (opts?.gender) {
+    const genderValues = getGenderFilterValues(opts.gender);
+    conditions.push(
+      genderValues.length === 1
+        ? eq(products.gender, genderValues[0]) as ReturnType<typeof eq>
+        : or(...genderValues.map(gender => eq(products.gender, gender))) as ReturnType<typeof eq>
+    );
+  }
   if (opts?.search) {
     const s = `%${opts.search}%`;
     conditions.push(or(like(products.name, s), like(products.description, s)) as ReturnType<typeof eq>);
@@ -128,7 +138,7 @@ export async function getProducts(opts?: { categoryId?: number; search?: string;
   const rows = await db.select({
     id: products.id, name: products.name, slug: products.slug,
     description: products.description, material: products.material, materialsRaw: products.materials,
-    basePrice: products.basePrice, originalPrice: products.originalPrice, categoryId: products.categoryId,
+    basePrice: products.basePrice, originalPrice: products.originalPrice, reference: products.reference, categoryId: products.categoryId,
     active: products.active, featured: products.featured,
     imageUrlsRaw: products.imageUrls, stock: products.stock,
     createdAt: products.createdAt, updatedAt: products.updatedAt,
@@ -157,7 +167,7 @@ export async function getAllProducts(opts?: { limit?: number; offset?: number; s
   const q = db.select({
     id: products.id, name: products.name, slug: products.slug,
     description: products.description, material: products.material, materialsRaw: products.materials,
-    basePrice: products.basePrice, originalPrice: products.originalPrice, categoryId: products.categoryId,
+    basePrice: products.basePrice, originalPrice: products.originalPrice, reference: products.reference, categoryId: products.categoryId,
     active: products.active, featured: products.featured,
     imageUrlsRaw: products.imageUrls, stock: products.stock,
     createdAt: products.createdAt, updatedAt: products.updatedAt,
@@ -181,7 +191,7 @@ export async function getProductBySlug(slug: string) {
   const result = await db.select({
     id: products.id, name: products.name, slug: products.slug,
     description: products.description, material: products.material, materialsRaw: products.materials,
-    basePrice: products.basePrice, originalPrice: products.originalPrice, categoryId: products.categoryId,
+    basePrice: products.basePrice, originalPrice: products.originalPrice, reference: products.reference, categoryId: products.categoryId,
     active: products.active, featured: products.featured,
     imageUrlsRaw: products.imageUrls, stock: products.stock,
     createdAt: products.createdAt, updatedAt: products.updatedAt,
@@ -212,7 +222,7 @@ export async function getProductVariants(productId: number) {
 
 export async function createProduct(data: {
   name: string; slug: string; description?: string; material?: string; materials?: string[];
-  basePrice: string; originalPrice?: string | null; categoryId: number; featured?: boolean; imageUrls?: string[]; stock?: number;
+  basePrice: string; originalPrice?: string | null; reference?: string | null; categoryId: number; featured?: boolean; imageUrls?: string[]; stock?: number;
   homeSection?: string; volumeMl?: number; gender?: "masculino" | "femenino" | "unisex" | "ninos";
 }) {
   const db = await getDb();
@@ -231,7 +241,7 @@ export async function createProduct(data: {
 
 export async function updateProduct(id: number, data: Partial<{
   name: string; slug: string; description: string; material: string; materials: string[];
-  basePrice: string; originalPrice: string | null; categoryId: number; active: boolean; featured: boolean; imageUrls: string[]; stock: number;
+  basePrice: string; originalPrice: string | null; reference: string | null; categoryId: number; active: boolean; featured: boolean; imageUrls: string[]; stock: number;
   homeSection: string; volumeMl: number; gender: "masculino" | "femenino" | "unisex" | "ninos";
 }>) {
   const db = await getDb();
@@ -279,7 +289,7 @@ export async function getCartItems(key: { userId?: number; sessionId?: string })
     productId: cartItems.productId, variantId: cartItems.variantId,
     sessionId: cartItems.sessionId, userId: cartItems.userId,
     productName: products.name, productSlug: products.slug,
-    productMaterial: products.material, productBasePrice: products.basePrice,
+    productMaterial: products.material, productReference: products.reference, productBasePrice: products.basePrice,
     productImageUrlsRaw: products.imageUrls,
     variantType: productVariants.type, variantValue: productVariants.value,
     variantPriceModifier: productVariants.priceModifier,
@@ -332,21 +342,173 @@ export async function clearCart(key: { userId?: number; sessionId?: string }) {
   await db.delete(cartItems).where(condition);
 }
 
+// ── Promotional codes ─────────────────────────────────────────────────────────
+export function normalizePromoCode(code: string) {
+  return code.trim().toUpperCase().replace(/\s+/g, "");
+}
+
+export async function getPromoCodes() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(promoCodes).orderBy(desc(promoCodes.updatedAt));
+}
+
+export async function getActivePromoCode(code: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const normalized = normalizePromoCode(code);
+  const result = await db.select().from(promoCodes)
+    .where(and(eq(promoCodes.code, normalized), eq(promoCodes.active, true)))
+    .limit(1);
+  return result[0];
+}
+
+export async function createPromoCode(data: { code: string; discountPercent: number; active?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(promoCodes).values({
+    code: normalizePromoCode(data.code),
+    discountPercent: data.discountPercent,
+    active: data.active ?? true,
+  });
+}
+
+export async function updatePromoCode(id: number, data: Partial<{ code: string; discountPercent: number; active: boolean }>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(promoCodes).set({
+    ...data,
+    ...(data.code !== undefined ? { code: normalizePromoCode(data.code) } : {}),
+  }).where(eq(promoCodes.id, id));
+}
+
+export type PromoPricing = {
+  subtotal: string;
+  total: string;
+  unitPrices: string[];
+  popupDiscountPercent?: number;
+  popupDiscountAmount?: string;
+  promoCode?: string;
+  promoDiscountPercent?: number;
+  promoDiscountAmount?: string;
+};
+
+export async function calculateOrderPricing(
+  items: Array<{ productId: number; variantId?: number; quantity: number }>,
+  promoCodeInput?: string,
+): Promise<PromoPricing> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  let subtotal = 0;
+  let popupDiscountAmount = 0;
+  let popupDiscountPercent: number | undefined;
+  const unitPrices: string[] = [];
+  const popupConfig = await getPopupConfig();
+  for (const item of items) {
+    const [product] = await db.select({ id: products.id, basePrice: products.basePrice })
+      .from(products)
+      .where(and(eq(products.id, item.productId), eq(products.active, true)))
+      .limit(1);
+    if (!product) throw new Error("Uno de los productos ya no está disponible");
+
+    let variantModifier = 0;
+    if (item.variantId) {
+      const [variant] = await db.select({ id: productVariants.id, priceModifier: productVariants.priceModifier })
+        .from(productVariants)
+        .where(and(eq(productVariants.id, item.variantId), eq(productVariants.productId, item.productId), eq(productVariants.active, true)))
+        .limit(1);
+      if (!variant) throw new Error("La variante seleccionada ya no está disponible");
+      variantModifier = Number(variant.priceModifier ?? 0);
+    }
+    const undiscountedUnitPrice = Math.round((Number(product.basePrice) + variantModifier) * 100) / 100;
+    const hasPopupOffer = popupConfig.enabled && popupConfig.productId === item.productId && popupConfig.discount > 0;
+    const unitPrice = hasPopupOffer
+      ? Math.round(undiscountedUnitPrice * (1 - popupConfig.discount / 100) * 100) / 100
+      : undiscountedUnitPrice;
+    if (hasPopupOffer) {
+      popupDiscountPercent = popupConfig.discount;
+      popupDiscountAmount += (undiscountedUnitPrice - unitPrice) * item.quantity;
+    }
+    unitPrices.push(String(unitPrice));
+    subtotal += undiscountedUnitPrice * item.quantity;
+  }
+
+  const roundedSubtotal = Math.round(subtotal * 100) / 100;
+  const roundedPopupDiscountAmount = Math.round(popupDiscountAmount * 100) / 100;
+  const subtotalAfterPopupOffer = Math.max(0, Math.round((roundedSubtotal - roundedPopupDiscountAmount) * 100) / 100);
+  const popupPricing = popupDiscountPercent
+    ? { popupDiscountPercent, popupDiscountAmount: String(roundedPopupDiscountAmount) }
+    : {};
+  if (!promoCodeInput?.trim()) return { subtotal: String(roundedSubtotal), total: String(subtotalAfterPopupOffer), unitPrices, ...popupPricing };
+
+  const promo = await getActivePromoCode(promoCodeInput);
+  if (!promo) throw new Error("El código promocional no es válido o está inactivo");
+  const promoDiscountAmount = Math.round(subtotalAfterPopupOffer * (promo.discountPercent / 100) * 100) / 100;
+  const total = Math.max(0, Math.round((subtotalAfterPopupOffer - promoDiscountAmount) * 100) / 100);
+  return {
+    subtotal: String(roundedSubtotal),
+    total: String(total),
+    unitPrices,
+    ...popupPricing,
+    promoCode: promo.code,
+    promoDiscountPercent: promo.discountPercent,
+    promoDiscountAmount: String(promoDiscountAmount),
+  };
+}
+
 // ── Orders ────────────────────────────────────────────────────────────────────
+const ORDER_SEQUENCE_START: Record<"contraentrega" | "wompi", number> = {
+  contraentrega: 1001,
+  wompi: 30101,
+};
+
+export function formatOrderNumber(order: { id: number; orderNumber?: string | null }) {
+  return order.orderNumber ?? `ANT-${String(order.id).padStart(6, "0")}`;
+}
+
+async function reserveOrderNumber(paymentMethod: "contraentrega" | "wompi") {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  return db.transaction(async (tx) => {
+    const existing = await tx.select({ nextNumber: orderSequences.nextNumber })
+      .from(orderSequences)
+      .where(eq(orderSequences.paymentMethod, paymentMethod))
+      .limit(1);
+    const allocated = existing[0]?.nextNumber ?? ORDER_SEQUENCE_START[paymentMethod];
+    if (existing[0]) {
+      await tx.update(orderSequences).set({ nextNumber: allocated + 1 })
+        .where(eq(orderSequences.paymentMethod, paymentMethod));
+    } else {
+      await tx.insert(orderSequences).values({ paymentMethod, nextNumber: allocated + 1 });
+    }
+    return `ANT-${String(allocated).padStart(6, "0")}`;
+  });
+}
+
 export async function createOrder(data: {
   userId?: number; guestEmail?: string; total: string; subtotal: string;
+  popupDiscountPercent?: number; popupDiscountAmount?: string;
+  promoCode?: string; promoDiscountPercent?: number; promoDiscountAmount?: string;
   shippingAddress: { fullName: string; address: string; city: string; department: string; phone: string; notes?: string };
   paymentMethod: "contraentrega" | "wompi";
   stripePaymentIntentId?: string;
-  items: Array<{ productId: number; variantId?: number; quantity: number; unitPrice: string; productSnapshot: { name: string; material: string; imageUrl: string; variantLabel?: string } }>;
+  items: Array<{ productId: number; variantId?: number; quantity: number; unitPrice: string; productSnapshot: { name: string; material: string; imageUrl: string; reference?: string; variantLabel?: string } }>;
 }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const publicToken = randomUUID().replace(/-/g, "");
+  const orderNumber = await reserveOrderNumber(data.paymentMethod);
   const [result] = await db.insert(orders).values({
+    orderNumber,
     publicToken,
     userId: data.userId, guestEmail: data.guestEmail,
     total: data.total, subtotal: data.subtotal,
+    popupDiscountPercent: data.popupDiscountPercent,
+    popupDiscountAmount: data.popupDiscountAmount,
+    promoCode: data.promoCode,
+    promoDiscountPercent: data.promoDiscountPercent,
+    promoDiscountAmount: data.promoDiscountAmount,
     shippingAddress: JSON.stringify(data.shippingAddress),
     stripePaymentIntentId: data.stripePaymentIntentId,
     paymentMethod: data.paymentMethod,
@@ -364,18 +526,26 @@ export async function createOrder(data: {
       productSnapshot: JSON.stringify(item.productSnapshot),
     })));
   }
-  return { id: orderId, publicToken };
+  return { id: orderId, publicToken, orderNumber };
 }
 
 export type ShipmentStatus = "pendiente" | "despachado" | "entregado";
+export type ShippingCarrier = "coordinadora" | "interrapidisimo";
 
 export async function getOrderPaymentInfoByToken(publicToken: string) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select({
     id: orders.id,
+    orderNumber: orders.orderNumber,
     publicToken: orders.publicToken,
     total: orders.total,
+    subtotal: orders.subtotal,
+    popupDiscountPercent: orders.popupDiscountPercent,
+    popupDiscountAmount: orders.popupDiscountAmount,
+    promoCode: orders.promoCode,
+    promoDiscountPercent: orders.promoDiscountPercent,
+    promoDiscountAmount: orders.promoDiscountAmount,
     paymentMethod: orders.paymentMethod,
     paymentStatus: orders.paymentStatus,
     status: orders.status,
@@ -409,6 +579,16 @@ export async function getOrderById(id: number) {
   return { ...r, shippingAddress: parseJsonColumn(r.shippingAddress) };
 }
 
+export async function getOrderByNumber(orderNumber: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const normalizedOrderNumber = orderNumber.trim().toUpperCase();
+  const result = await db.select().from(orders).where(eq(orders.orderNumber, normalizedOrderNumber)).limit(1);
+  const r = result[0];
+  if (!r) return undefined;
+  return { ...r, shippingAddress: parseJsonColumn(r.shippingAddress) };
+}
+
 export async function getOrderItems(orderId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -437,9 +617,12 @@ export async function getAllOrders(opts?: { limit?: number; offset?: number; sta
   const conditions: ReturnType<typeof eq>[] = [];
   if (opts?.status) conditions.push(eq(orders.status, opts.status as any));
   const q = db.select({
-    id: orders.id, userId: orders.userId, guestEmail: orders.guestEmail,
+    id: orders.id, orderNumber: orders.orderNumber, userId: orders.userId, guestEmail: orders.guestEmail,
     status: orders.status, total: orders.total, subtotal: orders.subtotal,
+    popupDiscountPercent: orders.popupDiscountPercent, popupDiscountAmount: orders.popupDiscountAmount,
+    promoCode: orders.promoCode, promoDiscountPercent: orders.promoDiscountPercent, promoDiscountAmount: orders.promoDiscountAmount,
     paymentMethod: orders.paymentMethod, paymentStatus: orders.paymentStatus,
+    shippingCarrier: orders.shippingCarrier, interrapidisimoGuide: orders.interrapidisimoGuide,
     shippingAddress: orders.shippingAddress, stripePaymentIntentId: orders.stripePaymentIntentId,
     stripePaymentStatus: orders.stripePaymentStatus, notes: orders.notes,
     createdAt: orders.createdAt, updatedAt: orders.updatedAt,
@@ -460,31 +643,51 @@ export async function updateOrderStatus(id: number, status: ShipmentStatus) {
   await db.update(orders).set({ status }).where(eq(orders.id, id));
 }
 
-export async function updateOrderShipment(id: number, shipment: { status: ShipmentStatus; interrapidisimoGuide?: string | null }) {
+export async function updateOrderShipment(id: number, shipment: { status: ShipmentStatus; shippingCarrier: ShippingCarrier; interrapidisimoGuide?: string | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(orders).set({
     status: shipment.status,
+    shippingCarrier: shipment.shippingCarrier,
     interrapidisimoGuide: shipment.interrapidisimoGuide?.trim() || null,
   }).where(eq(orders.id, id));
 }
 
+export async function deleteOrder(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.transaction(async (tx) => {
+    await tx.delete(orderItems).where(eq(orderItems.orderId, id));
+    await tx.delete(orders).where(eq(orders.id, id));
+  });
+}
+
 export async function getPublicOrderTracking(orderNumber: string) {
-  const match = orderNumber.trim().toUpperCase().match(/^ANT-(\d{1,10})$/);
+  const normalizedOrderNumber = orderNumber.trim().toUpperCase();
+  const match = normalizedOrderNumber.match(/^ANT-(\d{1,10})$/);
   if (!match) return undefined;
   const id = Number(match[1]);
   if (!Number.isSafeInteger(id) || id <= 0) return undefined;
 
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select({
+  const selectedOrder = await db.select({
     id: orders.id,
+    orderNumber: orders.orderNumber,
     status: orders.status,
+    shippingCarrier: orders.shippingCarrier,
     interrapidisimoGuide: orders.interrapidisimoGuide,
     createdAt: orders.createdAt,
-  }).from(orders).where(eq(orders.id, id)).limit(1);
-  const order = result[0];
-  return order ? { ...order, orderNumber: `ANT-${String(order.id).padStart(6, "0")}` } : undefined;
+  }).from(orders).where(eq(orders.orderNumber, normalizedOrderNumber)).limit(1);
+  const legacyOrder = selectedOrder[0] ?? (await db.select({
+    id: orders.id,
+    orderNumber: orders.orderNumber,
+    status: orders.status,
+    shippingCarrier: orders.shippingCarrier,
+    interrapidisimoGuide: orders.interrapidisimoGuide,
+    createdAt: orders.createdAt,
+  }).from(orders).where(eq(orders.id, id)).limit(1))[0];
+  return legacyOrder ? { ...legacyOrder, orderNumber: formatOrderNumber(legacyOrder) } : undefined;
 }
 
 export async function updateOrderPaymentStatus(stripePaymentIntentId: string, stripePaymentStatus: string) {

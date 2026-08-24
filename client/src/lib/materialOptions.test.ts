@@ -12,6 +12,11 @@ describe("materialOptions", () => {
     expect(getMaterialOption("MOISSANITAS").label).toBe("Moissanitas");
   });
 
+  it("reconoce Oro Blanco y Oro Rosa como acabados seleccionables", () => {
+    expect(getMaterialOption("ORO BLANCO").label).toBe("Oro Blanco");
+    expect(getMaterialOption("ORO ROSA").label).toBe("Oro Rosa");
+  });
+
   it("mantiene un brillo amarillo diferenciado para Oro 18K Nacional", () => {
     expect(getMaterialOption("ORO 18K NACIONAL").swatchClass).toContain("#ffd42a");
   });
@@ -20,6 +25,8 @@ describe("materialOptions", () => {
     expect(MATERIAL_OPTIONS.map((option) => option.value)).toEqual(expect.arrayContaining([
       "PLATA LEY 925",
       "ORO 18K NACIONAL",
+      "ORO BLANCO",
+      "ORO ROSA",
       "ORO LAMINADO AMERICANO",
       "ORO 18K ITALIANO",
       "ESMERALDAS",

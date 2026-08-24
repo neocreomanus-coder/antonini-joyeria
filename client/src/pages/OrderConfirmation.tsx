@@ -26,12 +26,12 @@ export default function OrderConfirmation() {
           {isLoading || !order ? <p className="mt-5 text-sm text-gray-500">Preparando la confirmación del pedido...</p> : <>
             <div className="mx-auto mt-7 max-w-sm border-y border-black/15 py-5">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Número de pedido</p>
-              <p className="mt-1 text-2xl font-bold text-black">{formatOrderNumber(order.id)}</p>
+              <p className="mt-1 text-2xl font-bold text-black">{formatOrderNumber(order.orderNumber ?? order.id)}</p>
               <p className="mt-3 text-sm text-gray-600">Total: <span className="font-bold text-black">{formatPrice(order.total)}</span></p>
             </div>
             {isWompi ? <>
               <p className="mx-auto mt-6 max-w-md text-sm leading-relaxed text-gray-600">Abre WhatsApp, adjunta la captura del pago y envíala. Nuestro equipo validará tu comprobante para despachar tu joya inmediatamente.</p>
-              <a href={buildPaymentProofWhatsAppUrl({ orderId: order.id, total: order.total })} target="_blank" rel="noreferrer" className="mt-7 inline-flex w-full items-center justify-center gap-2 bg-[#25D366] px-5 py-4 text-xs font-bold uppercase tracking-[0.1em] text-white transition-colors hover:bg-[#1ebe5d]">
+              <a href={buildPaymentProofWhatsAppUrl({ orderId: order.id, orderNumber: order.orderNumber, total: order.total })} target="_blank" rel="noreferrer" className="mt-7 inline-flex w-full items-center justify-center gap-2 bg-[#25D366] px-5 py-4 text-xs font-bold uppercase tracking-[0.1em] text-white transition-colors hover:bg-[#1ebe5d]">
                 <MessageCircle size={17} /> Enviar comprobante por WhatsApp
               </a>
             </> : <p className="mx-auto mt-6 max-w-md text-sm leading-relaxed text-gray-600">Pago contraentrega seleccionado. Te contactaremos para confirmar el despacho y la entrega de tu joya.</p>}

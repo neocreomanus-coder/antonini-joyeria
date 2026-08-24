@@ -52,6 +52,7 @@ export const products = mysqlTable("products", {
   materials: text("materials"),
   basePrice: decimal("basePrice", { precision: 12, scale: 2 }).notNull(),
   originalPrice: decimal("originalPrice", { precision: 12, scale: 2 }),
+  reference: varchar("reference", { length: 100 }),
   categoryId: int("categoryId").notNull(),
   active: boolean("active").default(true).notNull(),
   featured: boolean("featured").default(false).notNull(),
@@ -93,9 +94,22 @@ export const cartItems = mysqlTable("cart_items", {
 export type CartItem = typeof cartItems.$inferSelect;
 export type InsertCartItem = typeof cartItems.$inferInsert;
 
+// ── Promotional Codes ─────────────────────────────────────────────────────────
+export const promoCodes = mysqlTable("promo_codes", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 64 }).notNull().unique(),
+  discountPercent: int("discountPercent").notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PromoCode = typeof promoCodes.$inferSelect;
+export type InsertPromoCode = typeof promoCodes.$inferInsert;
+
 // ── Orders ────────────────────────────────────────────────────────────────────
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
+  orderNumber: varchar("orderNumber", { length: 20 }).unique(),
   publicToken: varchar("publicToken", { length: 64 }).unique(),
   userId: int("userId"),
   guestEmail: varchar("guestEmail", { length: 320 }),
@@ -108,9 +122,17 @@ export const orders = mysqlTable("orders", {
   status: mysqlEnum("status", ["pendiente", "despachado", "entregado"])
     .default("pendiente")
     .notNull(),
+  shippingCarrier: mysqlEnum("shippingCarrier", ["coordinadora", "interrapidisimo"])
+    .default("interrapidisimo")
+    .notNull(),
   interrapidisimoGuide: varchar("interrapidisimoGuide", { length: 100 }),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
   subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull(),
+  popupDiscountPercent: int("popupDiscountPercent"),
+  popupDiscountAmount: decimal("popupDiscountAmount", { precision: 12, scale: 2 }),
+  promoCode: varchar("promoCode", { length: 64 }),
+  promoDiscountPercent: int("promoDiscountPercent"),
+  promoDiscountAmount: decimal("promoDiscountAmount", { precision: 12, scale: 2 }),
   shippingAddress: text("shippingAddress"),
   stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 255 }),
   stripePaymentStatus: varchar("stripePaymentStatus", { length: 64 }),
@@ -120,6 +142,14 @@ export const orders = mysqlTable("orders", {
 });
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
+
+// ── Order sequences ───────────────────────────────────────────────────────────
+export const orderSequences = mysqlTable("order_sequences", {
+  paymentMethod: mysqlEnum("paymentMethod", ["contraentrega", "wompi"]).primaryKey(),
+  nextNumber: int("nextNumber").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type OrderSequence = typeof orderSequences.$inferSelect;
 
 // ── Order Items ───────────────────────────────────────────────────────────────
 export const orderItems = mysqlTable("order_items", {

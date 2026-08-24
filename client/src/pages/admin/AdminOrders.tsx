@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { formatOrderNumber } from "@/lib/paymentFlow";
-import { Eye, Search, ShoppingCart, ChevronDown } from "lucide-react";
+import { Eye, Search, ShoppingCart, ChevronDown, Trash2 } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 
@@ -19,10 +19,16 @@ export default function AdminOrders() {
   const [search, setSearch] = useState("");
   const { data: orders = [], refetch, isLoading } = trpc.orders.adminList.useQuery({ limit: 100, status: filterStatus || undefined });
   const updateStatus = trpc.orders.updateStatus.useMutation({ onSuccess: () => { toast.success("Estado actualizado"); refetch(); } });
+  const deleteOrder = trpc.orders.delete.useMutation({ onSuccess: () => { toast.success("Pedido eliminado"); refetch(); }, onError: () => toast.error("No fue posible eliminar el pedido") });
+
+  const handleDelete = (order: any) => {
+    const orderNumber = formatOrderNumber(order.orderNumber ?? order.id);
+    if (window.confirm(`¿Eliminar definitivamente el pedido ${orderNumber}? Esta acción no se puede deshacer.`)) deleteOrder.mutate({ id: order.id });
+  };
 
   const filtered = orders.filter((o: any) => {
     if (!search) return true;
-    return String(o.id).includes(search) || (o.shippingAddress?.fullName ?? "").toLowerCase().includes(search.toLowerCase());
+    return String(o.id).includes(search) || formatOrderNumber(o.orderNumber ?? o.id).includes(search.toUpperCase()) || (o.shippingAddress?.fullName ?? "").toLowerCase().includes(search.toLowerCase());
   });
 
   return (
@@ -70,7 +76,7 @@ export default function AdminOrders() {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      {["#", "Cliente", "Ciudad", "Total", "Estado", "Fecha", ""].map(h => (
+                      {["#", "Cliente", "Ciudad", "Total", "Descuentos", "Estado", "Fecha", ""].map(h => (
                         <th key={h} className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wide">{h}</th>
                       ))}
                     </tr>
@@ -80,10 +86,17 @@ export default function AdminOrders() {
                       const s = STATUS[order.status] ?? STATUS.pendiente;
                       return (
                         <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-5 py-4 text-sm font-bold text-brand-green">{formatOrderNumber(order.id)}</td>
+                          <td className="px-5 py-4 text-sm font-bold text-brand-green">{formatOrderNumber(order.orderNumber ?? order.id)}</td>
                           <td className="px-5 py-4"><p className="text-sm font-semibold text-gray-800">{order.shippingAddress?.fullName ?? order.userName ?? "—"}</p></td>
                           <td className="px-5 py-4 text-xs text-gray-400">{order.shippingAddress?.city ?? "—"}</td>
                           <td className="px-5 py-4 text-sm font-bold text-gray-900">{fmt(parseFloat(order.total))}</td>
+                          <td className="px-5 py-4">
+                            <div className="flex flex-wrap gap-1.5">
+                              {order.popupDiscountPercent && <span className="inline-flex rounded-full bg-brand-gold/15 px-2.5 py-1 text-xs font-bold text-[#8e6c1e]">Popup · -{order.popupDiscountPercent}%</span>}
+                              {order.promoCode && <span className="inline-flex rounded-full bg-brand-green/10 px-2.5 py-1 text-xs font-bold text-brand-green">{order.promoCode} · -{order.promoDiscountPercent}%</span>}
+                              {!order.popupDiscountPercent && !order.promoCode && <span className="text-xs text-gray-400">Sin descuento</span>}
+                            </div>
+                          </td>
                           <td className="px-5 py-4">
                             <select value={order.status} onChange={e => updateStatus.mutate({ id: order.id, status: e.target.value as any })}
                               className={`text-xs font-bold px-3 py-1.5 rounded-full border-0 cursor-pointer focus:outline-none ${s.bg} ${s.text}`}>
@@ -92,7 +105,10 @@ export default function AdminOrders() {
                           </td>
                           <td className="px-5 py-4 text-xs text-gray-400">{new Date(order.createdAt).toLocaleDateString("es-CO")}</td>
                           <td className="px-5 py-4">
-                            <Link href={`/admin/pedidos/${order.id}`} className="flex items-center gap-1 text-xs font-semibold text-brand-green hover:underline"><Eye size={14} /> Ver</Link>
+                            <div className="flex items-center gap-3">
+                              <Link href={`/admin/pedidos/${formatOrderNumber(order.orderNumber ?? order.id)}`} className="flex items-center gap-1 text-xs font-semibold text-brand-green hover:underline"><Eye size={14} /> Ver</Link>
+                              <button type="button" onClick={() => handleDelete(order)} disabled={deleteOrder.isPending} className="flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"><Trash2 size={14} /> Borrar</button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -107,13 +123,20 @@ export default function AdminOrders() {
                   return (
                     <div key={order.id} className="p-4">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-brand-green text-sm">{formatOrderNumber(order.id)}</span>
+                        <span className="font-bold text-brand-green text-sm">{formatOrderNumber(order.orderNumber ?? order.id)}</span>
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>{s.label}</span>
                       </div>
                       <p className="font-semibold text-gray-800 text-sm">{order.shippingAddress?.fullName ?? "—"}</p>
+                      <div className="mt-1 space-y-0.5 text-xs font-medium">
+                        {order.popupDiscountPercent && <p className="text-[#8e6c1e]">Oferta popup · -{fmt(order.popupDiscountAmount ?? 0)}</p>}
+                        <p className={order.promoCode ? "text-brand-green" : "text-gray-400"}>{order.promoCode ? `Código ${order.promoCode} · -${fmt(order.promoDiscountAmount ?? 0)}` : "Sin código promocional"}</p>
+                      </div>
                       <div className="flex items-center justify-between mt-2">
                         <span className="font-bold text-gray-900 text-sm">{fmt(parseFloat(order.total))}</span>
-                        <Link href={`/admin/pedidos/${order.id}`} className="text-xs font-semibold text-brand-green flex items-center gap-1"><Eye size={12} /> Ver</Link>
+                        <div className="flex items-center gap-3">
+                          <Link href={`/admin/pedidos/${formatOrderNumber(order.orderNumber ?? order.id)}`} className="text-xs font-semibold text-brand-green flex items-center gap-1"><Eye size={12} /> Ver</Link>
+                          <button type="button" onClick={() => handleDelete(order)} disabled={deleteOrder.isPending} className="text-xs font-semibold text-red-600 flex items-center gap-1 disabled:opacity-50"><Trash2 size={12} /> Borrar</button>
+                        </div>
                       </div>
                     </div>
                   );

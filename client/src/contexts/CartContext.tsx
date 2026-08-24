@@ -11,6 +11,7 @@ export type CartItemFull = {
   productName: string | null;
   productSlug: string | null;
   productMaterial: string | null;
+  productReference: string | null;
   productBasePrice: string | null;
   productImageUrls: string[] | null;
   variantType: string | null;
@@ -30,6 +31,10 @@ type CartContextType = {
   clearCart: () => Promise<void>;
   itemCount: number;
   subtotal: number;
+  subtotalBeforePopupDiscount: number;
+  popupDiscountAmount: number;
+  popupDiscountPercent: number | null;
+  getItemUnitPrice: (item: CartItemFull) => number;
   sessionId: string;
   refetch: () => void;
 };
@@ -51,6 +56,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     { sessionId: user ? undefined : sessionId },
     { refetchOnWindowFocus: false }
   );
+  const { data: popupConfig } = trpc.siteConfig.getPopup.useQuery(undefined, { refetchOnWindowFocus: false });
 
   const addMutation = trpc.cart.add.useMutation({ onSuccess: () => refetch() });
   const updateMutation = trpc.cart.updateQuantity.useMutation({ onSuccess: () => refetch() });
@@ -76,11 +82,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
-  const subtotal = items.reduce((sum, item) => {
+  const getUndiscountedUnitPrice = (item: CartItemFull) => {
     const base = parseFloat(item.productBasePrice ?? "0");
     const mod = parseFloat(item.variantPriceModifier ?? "0");
-    return sum + (base + mod) * item.quantity;
+    return base + mod;
+  };
+  const hasPopupOfferForItem = (item: CartItemFull) => Boolean(
+    popupConfig?.enabled && popupConfig.productId === item.productId && (popupConfig.discount ?? 0) > 0,
+  );
+  const getItemUnitPrice = (item: CartItemFull) => {
+    const price = getUndiscountedUnitPrice(item);
+    return hasPopupOfferForItem(item) ? Math.round(price * (1 - (popupConfig?.discount ?? 0) / 100) * 100) / 100 : price;
+  };
+  const subtotalBeforePopupDiscount = items.reduce((sum, item) => {
+    return sum + getUndiscountedUnitPrice(item) * item.quantity;
   }, 0);
+  const subtotal = items.reduce((sum, item) => {
+    return sum + getItemUnitPrice(item) * item.quantity;
+  }, 0);
+  const popupDiscountAmount = Math.max(0, Math.round((subtotalBeforePopupDiscount - subtotal) * 100) / 100);
+  const popupDiscountPercent = popupDiscountAmount > 0 ? popupConfig?.discount ?? null : null;
 
   return (
     <CartContext.Provider value={{
@@ -88,7 +109,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       isOpen, openCart: () => setIsOpen(true), closeCart: () => setIsOpen(false),
       toggleCart: () => setIsOpen(p => !p),
       addItem, updateQuantity, removeItem, clearCart,
-      itemCount, subtotal, sessionId, refetch,
+      itemCount, subtotal, subtotalBeforePopupDiscount, popupDiscountAmount, popupDiscountPercent, getItemUnitPrice, sessionId, refetch,
     }}>
       {children}
     </CartContext.Provider>
@@ -100,4 +121,3 @@ export function useCart() {
   if (!ctx) throw new Error("useCart must be used inside CartProvider");
   return ctx;
 }
-

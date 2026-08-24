@@ -6,12 +6,14 @@ describe("buildWhatsAppPurchaseUrl", () => {
     const url = new URL(buildWhatsAppPurchaseUrl({
       productName: "Cadena Cubana Oro 18K",
       priceLabel: "$ 250.000",
+      reference: "ANT-CAD-001",
       selectedOption: "largo 45 cm",
     }));
 
     expect(url.hostname).toBe("wa.me");
     expect(url.pathname).toBe("/573169308533");
     expect(url.searchParams.get("text")).toContain("Cadena Cubana Oro 18K");
+    expect(url.searchParams.get("text")).toContain("ANT-CAD-001");
     expect(url.searchParams.get("text")).toContain("largo 45 cm");
     expect(url.searchParams.get("text")).toContain("$ 250.000");
     expect(url.searchParams.get("text")).toContain("envío gratis");

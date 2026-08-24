@@ -71,6 +71,41 @@
       "when": 1787262906274,
       "tag": "0009_sticky_chimera",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1787534633424,
+      "tag": "0010_little_terrax",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1787540152237,
+      "tag": "0011_charming_union_jack",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1787581113154,
+      "tag": "0012_chunky_wrecking_crew",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1787593191615,
+      "tag": "0013_tiresome_namorita",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1787604894406,
+      "tag": "0014_workable_cyclops",
+      "breakpoints": true
     }
   ]
 }

@@ -5,13 +5,15 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
-import { ShoppingBag, ChevronLeft, ChevronRight, Shield, Truck, Award } from "lucide-react";
+import { ShoppingBag, ChevronLeft, ChevronRight, Shield, Truck, Award, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import ProductCard from "@/components/ProductCard";
-import { getDisplayProductPrice } from "@/lib/productPricing";
+import { getDisplayProductPrice, getPopupOfferForProduct } from "@/lib/productPricing";
 import { getGalleryImageIndex, getGallerySwipeDirection } from "@/lib/galleryNavigation";
 import { buildWhatsAppPurchaseUrl } from "@/lib/whatsappPurchase";
 import { getMaterialOption } from "@/lib/materialOptions";
+import { getProductTrustMessages } from "@/lib/productGuarantee";
+import { PRODUCT_IMAGE_DISCLAIMER_LINES, shouldShowProductImageDisclaimer } from "@/lib/productImageDisclaimer";
 
 function formatPrice(n: number) {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
@@ -29,6 +31,7 @@ export default function Producto() {
   const [, params] = useRoute("/producto/:slug");
   const slug = params?.slug ?? "";
   const { data: product, isLoading } = trpc.products.getBySlug.useQuery({ slug }, { enabled: !!slug });
+  const { data: popupConfig } = trpc.siteConfig.getPopup.useQuery(undefined, { refetchOnWindowFocus: false });
   const { addItem, itemCount } = useCart();
   const [selectedVariant, setSelectedVariant] = useState<number | undefined>();
   const [currentImage, setCurrentImage] = useState(0);
@@ -99,9 +102,11 @@ export default function Producto() {
   const selectedVariantData = product.variants?.find(v => v.id === selectedVariant);
   const variantModifier = parseFloat(selectedVariantData?.priceModifier ?? "0");
   const finalPrice = basePrice + variantModifier;
+  const { price: popupOfferPrice, discountPercent: popupDiscountPercent } = getPopupOfferForProduct(product.id, finalPrice, popupConfig);
   const configuredOriginalPrice = parseFloat(product.originalPrice ?? "0");
   const originalWithVariant = configuredOriginalPrice > basePrice ? configuredOriginalPrice + variantModifier : undefined;
-  const { discountedPrice, compareAtPrice, hasDiscount } = getDisplayProductPrice(finalPrice, originalWithVariant, itemCount);
+  const popupCompareAtPrice = popupDiscountPercent > 0 ? Math.max(finalPrice, originalWithVariant ?? 0) : originalWithVariant;
+  const { discountedPrice, compareAtPrice, hasDiscount } = getDisplayProductPrice(popupOfferPrice, popupCompareAtPrice, 0);
   const sizeVariants = product.variants?.filter(v => v.type === "size") ?? [];
   const lengthVariants = product.variants?.filter(v => v.type === "length") ?? [];
   const selectedOption = selectedVariantData
@@ -110,10 +115,21 @@ export default function Producto() {
   const whatsappPurchaseUrl = buildWhatsAppPurchaseUrl({
     productName: product.name,
     priceLabel: formatPrice(discountedPrice),
+    reference: product.reference,
     selectedOption,
   });
   const materials = product.materials?.length ? product.materials : [product.material ?? "ORO 18K NACIONAL"];
   const materialOptions = materials.map((value) => getMaterialOption(value));
+  const trustItems = getProductTrustMessages(materials, product.categorySlug).map((item) => ({
+    ...item,
+    icon: item.id === "free-shipping" || item.id === "cash-on-delivery"
+      ? Truck
+      : item.id === "original-box"
+        ? PackageCheck
+        : item.id === "fragrance-imported-original" || item.id === "authenticity-certificate"
+          ? Award
+          : Shield,
+  }));
 
   const completeTouchGesture = (endX: number) => {
     if (pointerStartX === null) return;
@@ -223,6 +239,14 @@ export default function Producto() {
                   ))}
                 </div>
               )}
+              {shouldShowProductImageDisclaimer(product.categorySlug) && (
+                <div className="mt-5 px-1 text-left text-[14px] leading-[1.38] text-[#5d5d5d] sm:px-2">
+                  <p>Imagen de referencia</p>
+                  <p className="mt-1">
+                    {PRODUCT_IMAGE_DISCLAIMER_LINES.map((line) => <span key={line} className="block">{line}</span>)}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Información y compra — jerarquía editorial */}
@@ -236,11 +260,13 @@ export default function Producto() {
                 ))}
               </div>
               <h1 className="mb-5 font-sans text-3xl font-bold leading-[1.08] tracking-[-0.025em] text-gray-950 md:text-4xl">{product.name}</h1>
+              {product.reference && <p className="-mt-2 mb-5 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">Referencia: {product.reference}</p>}
               <div className="border-b border-gray-200 pb-6">
                 <p className="font-sans text-[2.15rem] font-semibold leading-none tracking-[-0.035em] text-gray-950 md:text-4xl">{formatPrice(discountedPrice)}</p>
                 {hasDiscount && (
                   <p className="mt-2 text-sm font-medium text-gray-400 line-through decoration-gray-400">{formatPrice(compareAtPrice)}</p>
                 )}
+                {popupDiscountPercent > 0 && <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.12em] text-brand-green">Oferta activa del popup · {popupDiscountPercent}% OFF</p>}
               </div>
 
               {/* Size variants */}
@@ -301,16 +327,26 @@ export default function Producto() {
 
               {/* Guarantees */}
               <div className="mt-7 grid grid-cols-3 border-y border-gray-200 bg-white">
-                {[
-                  { icon: Shield, text: "Garantía de por vida" },
-                  { icon: Truck, text: "Paga al recibir" },
-                  { icon: Award, text: "Certificado de autenticidad" },
-                ].map(({ icon: Icon, text }) => (
-                  <div key={text} className="flex min-h-[96px] flex-col items-center justify-center gap-2 border-l border-gray-200 bg-white px-2 py-4 text-center first:border-l-0 sm:px-3">
+                {trustItems.map(({ id, icon: Icon, text }) => (
+                  <div key={id} className="flex min-h-[96px] flex-col items-center justify-center gap-2 border-l border-gray-200 bg-white px-2 py-4 text-center first:border-l-0 sm:px-3">
                     <Icon className="h-[18px] w-[18px] text-brand-gold" strokeWidth={1.5} />
                     <span className="text-[10px] font-bold uppercase leading-tight tracking-[0.055em] text-gray-800 sm:text-[11px]">{text}</span>
                   </div>
                 ))}
+              </div>
+              <div className="mt-6 space-y-3 text-[14px] leading-relaxed text-gray-800">
+                <p>
+                  Disponible para entrega: <span className="font-medium">Todo el país</span>{" "}
+                  <Link href="/terminos-y-condiciones" className="font-medium text-brand-gold underline decoration-brand-gold underline-offset-2 transition-colors hover:text-brand-green">
+                    Aplican condiciones y restricciones.
+                  </Link>
+                </p>
+                <p>
+                  Conoce nuestra política de{" "}
+                  <Link href="/cambios-y-devoluciones" className="font-medium text-brand-gold underline decoration-brand-gold underline-offset-2 transition-colors hover:text-brand-green">
+                    Cambios y Devoluciones.
+                  </Link>
+                </p>
               </div>
             </div>
           </div>

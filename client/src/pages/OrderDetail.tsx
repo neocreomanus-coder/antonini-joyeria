@@ -58,7 +58,7 @@ export default function OrderDetail() {
             <ChevronLeft className="w-4 h-4" /> Mis pedidos
           </Link>
           <div className="flex items-center justify-between mb-8">
-            <h1 className="font-sans text-3xl font-bold text-[oklch(0.18_0.02_60)]">Pedido {formatOrderNumber(order.id)}</h1>
+            <h1 className="font-sans text-3xl font-bold text-[oklch(0.18_0.02_60)]">Pedido {formatOrderNumber(order.orderNumber ?? order.id)}</h1>
             <span className={`px-4 py-2 rounded-full text-sm font-semibold ${s.color}`}>{s.label}</span>
           </div>
 
@@ -93,6 +93,7 @@ export default function OrderDetail() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-[oklch(0.18_0.02_60)]">{snap?.name}</p>
+                        {snap?.reference && <p className="text-xs font-semibold uppercase tracking-wide text-brand-green">Ref. {snap.reference}</p>}
                         {snap?.variantLabel && <p className="text-xs text-[oklch(0.52_0.02_60)]">{snap.variantLabel}</p>}
                         <p className="text-xs text-[oklch(0.52_0.02_60)]">x{item.quantity}</p>
                       </div>
@@ -100,6 +101,11 @@ export default function OrderDetail() {
                     </div>
                   );
                 })}
+              </div>
+              <div className="mt-4 space-y-2 border-t border-gold-100 pt-4">
+                <div className="flex justify-between text-sm text-[oklch(0.42_0.02_60)]"><span>Subtotal</span><span>{formatPrice(parseFloat(order.subtotal))}</span></div>
+                {order.popupDiscountPercent && <div className="flex justify-between text-sm font-medium text-brand-green"><span>Oferta popup · {order.popupDiscountPercent}% OFF</span><span>-{formatPrice(parseFloat(order.popupDiscountAmount ?? "0"))}</span></div>}
+                {order.promoCode ? <div className="flex justify-between text-sm font-medium text-brand-green"><span>Código {order.promoCode} · {order.promoDiscountPercent}% OFF</span><span>-{formatPrice(parseFloat(order.promoDiscountAmount ?? "0"))}</span></div> : <div className="flex justify-between text-sm text-[oklch(0.52_0.02_60)]"><span>Código promocional</span><span>No utilizado</span></div>}
               </div>
               <div className="border-t border-gold-100 pt-4 mt-4 flex justify-between">
                 <span className="font-medium text-[oklch(0.35_0.02_60)]">Total</span>
@@ -122,7 +128,7 @@ export default function OrderDetail() {
                 Pedido realizado el {new Date(order.createdAt).toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}
               </div>
               <div className="mt-4 border-t border-gold-100 pt-4 text-sm text-[oklch(0.35_0.02_60)]">
-                <p className="font-semibold">Transportadora: Interrapidísimo</p>
+                <p className="font-semibold">Transportadora: {order.shippingCarrier === "coordinadora" ? "Coordinadora" : "Inter Rapidísimo"}</p>
                 <p className="mt-1">Guía: {order.interrapidisimoGuide ?? "Aún no asignada"}</p>
               </div>
             </div>

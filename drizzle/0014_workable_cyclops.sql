@@ -1,0 +1,1 @@
+ALTER TABLE `orders` ADD `shippingCarrier` enum('coordinadora','interrapidisimo') DEFAULT 'interrapidisimo' NOT NULL;

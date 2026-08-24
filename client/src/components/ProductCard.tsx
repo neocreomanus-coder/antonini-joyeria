@@ -3,6 +3,8 @@ import { Link } from "wouter";
 import { ShoppingBag, Gem } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { getMaterialOption } from "@/lib/materialOptions";
+import { trpc } from "@/lib/trpc";
+import { getPopupOfferForProduct } from "@/lib/productPricing";
 
 type Props = {
   id: number;
@@ -30,11 +32,14 @@ const GENDER_LABELS = {
 
 export default function ProductCard({ id, name, slug, material, basePrice, originalPrice, imageUrls, volumeMl, gender }: Props) {
   const { addItem } = useCart();
+  const { data: popupConfig } = trpc.siteConfig.getPopup.useQuery(undefined, { refetchOnWindowFocus: false });
   const [adding, setAdding] = useState(false);
   const img = imageUrls?.[0] ?? "";
-  const price = Number(basePrice);
+  const regularPrice = Number(basePrice);
+  const { price, discountPercent: popupDiscountPercent } = getPopupOfferForProduct(id, regularPrice, popupConfig);
   const configuredOriginalPrice = Number(originalPrice ?? 0);
-  const hasDiscount = configuredOriginalPrice > price;
+  const compareAtPrice = popupDiscountPercent > 0 ? Math.max(configuredOriginalPrice, regularPrice) : configuredOriginalPrice;
+  const hasDiscount = compareAtPrice > price;
   const materialLabel = getMaterialOption(material).label;
   const productSegment = gender ? GENDER_LABELS[gender] : null;
 
@@ -71,7 +76,8 @@ export default function ProductCard({ id, name, slug, material, basePrice, origi
         <p className="text-[17px] font-bold text-gray-950 leading-snug line-clamp-2 font-sans">{name}</p>
         <div className="mt-2.5 min-h-12">
           <p className="text-xl font-extrabold leading-none text-gray-950">{fmt(price)}</p>
-          {hasDiscount && <p className="mt-1.5 text-sm font-semibold leading-none text-gray-500 line-through decoration-gray-400">Antes: {fmt(configuredOriginalPrice)}</p>}
+          {hasDiscount && <p className="mt-1.5 text-sm font-semibold leading-none text-gray-500 line-through decoration-gray-400">Antes: {fmt(compareAtPrice)}</p>}
+          {popupDiscountPercent > 0 && <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-brand-green">Oferta activa · {popupDiscountPercent}% OFF</p>}
         </div>
       </div>
     </Link>

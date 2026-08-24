@@ -14,7 +14,13 @@ export default function TrackOrder() {
   const [value, setValue] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const tracking = trpc.orders.track.useQuery({ orderNumber }, { enabled: Boolean(orderNumber), retry: false });
-  const detail = tracking.data ? STATUS[tracking.data.status] : null;
+  const carrierName = tracking.data?.shippingCarrier === "coordinadora" ? "Coordinadora" : "Inter Rapidísimo";
+  const detail = tracking.data
+    ? {
+      ...STATUS[tracking.data.status],
+      description: tracking.data.status === "despachado" ? `Tu pedido está en camino con ${carrierName}.` : STATUS[tracking.data.status].description,
+    }
+    : null;
   const Icon = detail?.icon ?? PackageSearch;
 
   return (
@@ -43,7 +49,7 @@ export default function TrackOrder() {
                 </div>
               </div>
               <div className="mt-5 border-t border-black/10 pt-4 text-sm text-gray-700">
-                <p><strong>Transportadora:</strong> Interrapidísimo</p>
+                <p><strong>Transportadora:</strong> {carrierName}</p>
                 <p className="mt-1"><strong>Guía:</strong> {tracking.data.interrapidisimoGuide ?? "Aún no asignada"}</p>
               </div>
             </div>

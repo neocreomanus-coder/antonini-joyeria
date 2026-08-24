@@ -3,12 +3,13 @@ export const WOMPI_PAYMENT_BUTTON_IMAGE = "/manus-storage/wompi-payment-button_9
 export const STORE_WHATSAPP_NUMBER = "57316930853";
 export const PAYMENT_RESERVATION_MS = 10 * 60 * 1000;
 
-export function formatOrderNumber(orderId: number) {
-  return `ANT-${String(orderId).padStart(6, "0")}`;
+export function formatOrderNumber(order: number | string | null | undefined) {
+  if (typeof order === "string" && /^ANT-\d{6,}$/i.test(order)) return order.toUpperCase();
+  return `ANT-${String(order ?? 0).padStart(6, "0")}`;
 }
 
-export function buildPaymentProofWhatsAppUrl(input: { orderId: number; total: string | number }) {
-  const orderNumber = formatOrderNumber(input.orderId);
+export function buildPaymentProofWhatsAppUrl(input: { orderId: number; orderNumber?: string | null; total: string | number }) {
+  const orderNumber = formatOrderNumber(input.orderNumber ?? input.orderId);
   const total = Number(input.total).toLocaleString("es-CO");
   const text = [
     "Hola, Antonini Joyería.",

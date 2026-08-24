@@ -22,12 +22,12 @@ function formatPrice(n: number) {
 }
 
 export default function AdminOrderDetail() {
-  const [, params] = useRoute("/admin/pedidos/:id");
-  const id = parseInt(params?.id ?? "0");
+  const [, params] = useRoute("/admin/pedidos/:orderNumber");
+  const orderNumber = params?.orderNumber?.toUpperCase() ?? "";
   const utils = trpc.useUtils();
-  const { data: order, isLoading } = trpc.orders.adminGetById.useQuery({ id }, { enabled: !!id });
+  const { data: order, isLoading } = trpc.orders.adminGetByOrderNumber.useQuery({ orderNumber }, { enabled: /^ANT-\d{6,}$/.test(orderNumber) });
   const updateShipment = trpc.orders.updateShipment.useMutation({
-    onSuccess: () => { toast.success("Despacho actualizado"); utils.orders.adminGetById.invalidate({ id }); utils.orders.adminList.invalidate(); },
+    onSuccess: () => { toast.success("Despacho actualizado"); utils.orders.adminGetByOrderNumber.invalidate({ orderNumber }); utils.orders.adminList.invalidate(); },
     onError: e => toast.error(e.message),
   });
 
@@ -58,7 +58,7 @@ export default function AdminOrderDetail() {
 
       <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-sans text-2xl font-bold text-[oklch(0.18_0.02_60)]">Pedido {formatOrderNumber(order.id)}</h1>
+          <h1 className="font-sans text-2xl font-bold text-[oklch(0.18_0.02_60)]">Pedido {formatOrderNumber(order.orderNumber ?? order.id)}</h1>
           <p className="text-sm text-[oklch(0.52_0.02_60)]">{new Date(order.createdAt).toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end">
@@ -71,7 +71,7 @@ export default function AdminOrderDetail() {
                 key={option.value}
                 type="button"
                 disabled={updateShipment.isPending}
-                onClick={() => updateShipment.mutate({ id: order.id, status: option.value, interrapidisimoGuide: order.interrapidisimoGuide })}
+                onClick={() => updateShipment.mutate({ id: order.id, status: option.value, shippingCarrier: order.shippingCarrier ?? "interrapidisimo", interrapidisimoGuide: order.interrapidisimoGuide })}
                 className={`min-h-10 px-2 text-[11px] font-bold transition-colors ${order.status === option.value ? "bg-brand-green text-white" : "border border-gray-200 bg-white text-gray-600 hover:border-brand-green"}`}
               >
                 {option.label}
@@ -95,12 +95,18 @@ export default function AdminOrderDetail() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[oklch(0.18_0.02_60)]">{snap?.name}</p>
+                    {snap?.reference && <p className="text-xs font-semibold uppercase tracking-wide text-brand-green">Ref. {snap.reference}</p>}
                     <p className="text-xs text-[oklch(0.52_0.02_60)]">{snap?.material}{snap?.variantLabel ? ` · ${snap.variantLabel}` : ""} · x{item.quantity}</p>
                   </div>
                   <span className="text-sm font-semibold text-[oklch(0.48_0.11_70)] shrink-0">{formatPrice(parseFloat(item.unitPrice) * item.quantity)}</span>
                 </div>
               );
             })}
+          </div>
+          <div className="mt-4 space-y-2 border-t border-gold-100 pt-4">
+            <div className="flex justify-between text-sm text-[oklch(0.42_0.02_60)]"><span>Subtotal</span><span>{formatPrice(parseFloat(order.subtotal))}</span></div>
+            {order.popupDiscountPercent && <div className="flex justify-between text-sm font-medium text-brand-green"><span>Oferta popup · {order.popupDiscountPercent}% OFF</span><span>-{formatPrice(parseFloat(order.popupDiscountAmount ?? "0"))}</span></div>}
+            {order.promoCode ? <div className="flex justify-between text-sm font-medium text-brand-green"><span>Código {order.promoCode} · {order.promoDiscountPercent}% OFF</span><span>-{formatPrice(parseFloat(order.promoDiscountAmount ?? "0"))}</span></div> : <div className="flex justify-between text-sm text-[oklch(0.52_0.02_60)]"><span>Código promocional</span><span>No utilizado</span></div>}
           </div>
           <div className="border-t border-gold-100 pt-4 mt-4 flex justify-between">
             <span className="font-medium text-[oklch(0.35_0.02_60)]">Total</span>
@@ -129,16 +135,22 @@ export default function AdminOrderDetail() {
               className="mt-4 border-t border-gold-100 pt-4"
               onSubmit={(event) => {
                 event.preventDefault();
-                const guide = String(new FormData(event.currentTarget).get("guide") ?? "");
-                updateShipment.mutate({ id: order.id, status: order.status, interrapidisimoGuide: guide || null });
+                const formData = new FormData(event.currentTarget);
+                const guide = String(formData.get("guide") ?? "");
+                const shippingCarrier = String(formData.get("shippingCarrier") ?? "interrapidisimo") === "coordinadora" ? "coordinadora" : "interrapidisimo";
+                updateShipment.mutate({ id: order.id, status: order.status, shippingCarrier, interrapidisimoGuide: guide || null });
               }}
             >
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[oklch(0.52_0.02_60)]">Guía Interrapidísimo</p>
-              <div className="mt-2 flex gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[oklch(0.52_0.02_60)]">Transportadora y guía</p>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <select name="shippingCarrier" defaultValue={order.shippingCarrier ?? "interrapidisimo"} className="border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-green">
+                  <option value="interrapidisimo">Inter Rapidísimo</option>
+                  <option value="coordinadora">Coordinadora</option>
+                </select>
                 <input name="guide" defaultValue={order.interrapidisimoGuide ?? ""} placeholder="Ingresa la guía" className="min-w-0 flex-1 border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-green" />
                 <Button type="submit" disabled={updateShipment.isPending} className="shrink-0 bg-brand-green px-3 text-xs text-white hover:bg-brand-green">Guardar</Button>
               </div>
-              <p className="mt-2 text-xs text-gray-500">Transportadora fija: Interrapidísimo.</p>
+              <p className="mt-2 text-xs text-gray-500">La transportadora y la guía quedarán visibles para el cliente al rastrear el pedido.</p>
             </form>
           </div>
         </div>

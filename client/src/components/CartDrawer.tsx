@@ -1,32 +1,19 @@
 import { useCart } from "@/contexts/CartContext";
 import { X, ShoppingBag, Minus, Plus, Trash2, Gem, Lock, Tag, ChevronRight } from "lucide-react";
 import { Link } from "wouter";
+import { getNextTieredCartDiscount, getTieredCartDiscountPercentage } from "@/lib/cartDiscount";
 
 function fmt(n: number) {
   return `$ ${n.toLocaleString("es-CO")}`;
 }
 
-function getDiscountPct(itemCount: number) {
-  if (itemCount >= 4) return 15;
-  if (itemCount >= 3) return 10;
-  if (itemCount >= 2) return 5;
-  return 0;
-}
-
-function getNextDiscount(itemCount: number) {
-  if (itemCount >= 4) return null;
-  if (itemCount >= 3) return { need: 4 - itemCount, pct: 15 };
-  if (itemCount >= 2) return { need: 3 - itemCount, pct: 10 };
-  return { need: 2 - itemCount, pct: 5 };
-}
-
 export default function CartDrawer() {
-  const { items, isOpen, closeCart, updateQuantity, removeItem, subtotal, itemCount } = useCart();
+  const { items, isOpen, closeCart, updateQuantity, removeItem, subtotal, subtotalBeforePopupDiscount, popupDiscountAmount, popupDiscountPercent, getItemUnitPrice, itemCount } = useCart();
 
-  const discountPct = getDiscountPct(itemCount);
+  const discountPct = getTieredCartDiscountPercentage(itemCount);
   const discountAmount = subtotal * (discountPct / 100);
   const finalTotal = subtotal - discountAmount;
-  const nextDiscount = getNextDiscount(itemCount);
+  const nextDiscount = getNextTieredCartDiscount(itemCount);
 
   return (
     <>
@@ -117,7 +104,8 @@ export default function CartDrawer() {
               {items.map(item => {
                 const base = parseFloat(item.productBasePrice ?? "0");
                 const mod = parseFloat(item.variantPriceModifier ?? "0");
-                const unitPrice = base + mod;
+                const undiscountedUnitPrice = base + mod;
+                const unitPrice = getItemUnitPrice(item);
                 const lineTotal = unitPrice * item.quantity;
                 const imgs = item.productImageUrls ?? [];
 
@@ -142,6 +130,7 @@ export default function CartDrawer() {
                       {item.variantValue && (
                         <p className="text-[10px] text-gray-400 mt-0.5 capitalize">{item.variantType}: {item.variantValue}</p>
                       )}
+                      {item.productReference && <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Ref. {item.productReference}</p>}
                       <p className="text-[10px] font-bold text-brand-gold mt-0.5">{item.productMaterial || "ORO 18K"}</p>
 
                       <div className="flex items-center justify-between mt-2">
@@ -159,7 +148,10 @@ export default function CartDrawer() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-brand-green">{fmt(lineTotal)}</span>
+                          <div className="text-right">
+                            <span className="text-sm font-bold text-brand-green">{fmt(lineTotal)}</span>
+                            {unitPrice < undiscountedUnitPrice && <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-green">Oferta popup</p>}
+                          </div>
                           <button onClick={() => removeItem(item.id)}
                             className="p-1 text-gray-300 hover:text-red-400 transition-colors active:scale-95"
                             aria-label="Eliminar">
@@ -181,9 +173,16 @@ export default function CartDrawer() {
             {/* Subtotal */}
             <div className="space-y-1.5">
               <div className="flex justify-between text-sm text-gray-500">
-                <span>Subtotal ({itemCount} {itemCount === 1 ? "producto" : "productos"})</span>
-                <span>{fmt(subtotal)}</span>
+                <span>Subtotal ({itemCount} {itemCount === 1 ? "unidad" : "unidades"})</span>
+                <span>{fmt(subtotalBeforePopupDiscount)}</span>
               </div>
+
+              {popupDiscountAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-brand-green font-semibold flex items-center gap-1"><Tag size={12} /> Oferta popup{popupDiscountPercent ? ` · ${popupDiscountPercent}%` : ""}</span>
+                  <span className="text-brand-green font-bold">-{fmt(popupDiscountAmount)}</span>
+                </div>
+              )}
 
               {/* Discount line */}
               {discountPct > 0 && (

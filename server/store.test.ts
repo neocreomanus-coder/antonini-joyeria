@@ -69,7 +69,13 @@ vi.mock("./db", () => ({
   updateCartItemQuantity: vi.fn().mockResolvedValue(undefined),
   removeCartItem: vi.fn().mockResolvedValue(undefined),
   clearCart: vi.fn().mockResolvedValue(undefined),
-  createOrder: vi.fn().mockResolvedValue({ id: 42, publicToken: "pedido-publico-de-prueba-000000000001" }),
+  getPromoCodes: vi.fn().mockResolvedValue([{ id: 1, code: "AHORRA15", discountPercent: 15, active: true }]),
+  getActivePromoCode: vi.fn().mockResolvedValue({ id: 1, code: "AHORRA15", discountPercent: 15, active: true }),
+  createPromoCode: vi.fn().mockResolvedValue(undefined),
+  updatePromoCode: vi.fn().mockResolvedValue(undefined),
+  calculateOrderPricing: vi.fn().mockResolvedValue({ subtotal: "250000", total: "250000", unitPrices: ["250000"] }),
+  createOrder: vi.fn().mockResolvedValue({ id: 42, publicToken: "pedido-publico-de-prueba-000000000001", orderNumber: "ANT-030101" }),
+  formatOrderNumber: vi.fn((order: { id: number; orderNumber?: string | null }) => order.orderNumber ?? `ANT-${String(order.id).padStart(6, "0")}`),
   getOrdersByUserId: vi.fn().mockResolvedValue([]),
   getOrderPaymentInfoByToken: vi.fn().mockResolvedValue({
     id: 42,
@@ -90,14 +96,17 @@ vi.mock("./db", () => ({
     createdAt: new Date(),
   }),
   getOrderById: vi.fn().mockResolvedValue({ id: 42, status: "pendiente", total: "250000", subtotal: "250000", userId: 1, createdAt: new Date(), updatedAt: new Date(), shippingAddress: null, guestEmail: null, stripePaymentIntentId: null, stripePaymentStatus: null, notes: null }),
+  getOrderByNumber: vi.fn().mockResolvedValue({ id: 42, orderNumber: "ANT-030101", status: "pendiente", total: "250000", subtotal: "250000", userId: 1, createdAt: new Date(), updatedAt: new Date(), shippingAddress: null, guestEmail: null, stripePaymentIntentId: null, stripePaymentStatus: null, notes: null }),
   getOrderItems: vi.fn().mockResolvedValue([]),
   getAllOrders: vi.fn().mockResolvedValue([]),
   updateOrderStatus: vi.fn().mockResolvedValue(undefined),
   updateOrderShipment: vi.fn().mockResolvedValue(undefined),
+  deleteOrder: vi.fn().mockResolvedValue(undefined),
   getPublicOrderTracking: vi.fn().mockResolvedValue({
     id: 42,
     orderNumber: "ANT-000042",
     status: "pendiente",
+    shippingCarrier: "interrapidisimo",
     interrapidisimoGuide: null,
     createdAt: new Date(),
   }),
@@ -195,6 +204,21 @@ describe("products router", () => {
     expect(db.updateProduct).toHaveBeenLastCalledWith(1, expect.objectContaining({ originalPrice: "143000" }));
   });
 
+  it("allows administrators to save a manual product reference", async () => {
+    const adminCaller = appRouter.createCaller(makeCtx("admin"));
+    await expect(adminCaller.products.create({
+      name: "Cadena con referencia",
+      slug: "cadena-con-referencia",
+      basePrice: "250000",
+      reference: "ANT-CAD-001",
+      categoryId: 1,
+    })).resolves.toMatchObject({ success: true });
+
+    expect(db.createProduct).toHaveBeenLastCalledWith(expect.objectContaining({ reference: "ANT-CAD-001" }));
+    await expect(adminCaller.products.update({ id: 1, reference: "ANT-CAD-002" })).resolves.toMatchObject({ success: true });
+    expect(db.updateProduct).toHaveBeenLastCalledWith(1, expect.objectContaining({ reference: "ANT-CAD-002" }));
+  });
+
   it("allows administrators to assign the Niños perfumery segment", async () => {
     const adminCaller = appRouter.createCaller(makeCtx("admin"));
     await expect(adminCaller.products.create({
@@ -268,6 +292,28 @@ describe("delivery photos router", () => {
   });
 });
 
+describe("promo codes router", () => {
+  it("valida públicamente solo los códigos promocionales activos", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.promoCodes.validate({ code: "ahorra15" })).resolves.toEqual({ valid: true, code: "AHORRA15", discountPercent: 15 });
+    vi.mocked(db.getActivePromoCode).mockResolvedValueOnce(undefined);
+    await expect(caller.promoCodes.validate({ code: "INACTIVO" })).resolves.toEqual({ valid: false });
+  });
+
+  it("permite al administrador crear, editar y activar códigos", async () => {
+    const adminCaller = appRouter.createCaller(makeCtx("admin"));
+    await expect(adminCaller.promoCodes.create({ code: "nuevo20", discountPercent: 20, active: true })).resolves.toMatchObject({ success: true });
+    expect(db.createPromoCode).toHaveBeenLastCalledWith({ code: "nuevo20", discountPercent: 20, active: true });
+    await expect(adminCaller.promoCodes.update({ id: 1, discountPercent: 25, active: false })).resolves.toMatchObject({ success: true });
+    expect(db.updatePromoCode).toHaveBeenLastCalledWith(1, { discountPercent: 25, active: false });
+  });
+
+  it("restringe la administración de códigos a administradores", async () => {
+    const userCaller = appRouter.createCaller(makeCtx("user"));
+    await expect(userCaller.promoCodes.adminList()).rejects.toThrow();
+  });
+});
+
 describe("orders router", () => {
   const wompiOrderInput = {
     total: "250000",
@@ -286,17 +332,17 @@ describe("orders router", () => {
       productId: 1,
       quantity: 1,
       unitPrice: "250000",
-      productSnapshot: { name: "Cadena Cubana", material: "ORO 18K", imageUrl: "/cadena.jpg" },
+      productSnapshot: { name: "Cadena Cubana", material: "ORO 18K", imageUrl: "/cadena.jpg", reference: "ANT-CAD-001" },
     }],
   };
 
   it("crea un pedido Wompi con número y token público", async () => {
     const caller = appRouter.createCaller(makePublicCtx());
     const result = await caller.orders.create(wompiOrderInput);
-    expect(result).toMatchObject({ orderId: 42, orderNumber: "ANT-000042", paymentMethod: "wompi" });
+    expect(result).toMatchObject({ orderId: 42, orderNumber: "ANT-030101", paymentMethod: "wompi" });
     expect(db.createOrder).toHaveBeenLastCalledWith(expect.objectContaining({ paymentMethod: "wompi" }));
     expect(notifyTelegramAboutOrderMock).toHaveBeenLastCalledWith(expect.objectContaining({
-      orderId: 42,
+      orderId: 42, orderNumber: "ANT-030101",
       paymentMethod: "wompi",
       customerName: "María García",
       customerPhone: "3001234567",
@@ -308,9 +354,22 @@ describe("orders router", () => {
 
   it("crea un número de pedido también para pago contraentrega", async () => {
     const caller = appRouter.createCaller(makePublicCtx());
+    vi.mocked(db.createOrder).mockResolvedValueOnce({ id: 42, publicToken: "pedido-publico-de-prueba-000000000001", orderNumber: "ANT-001001" });
     const result = await caller.orders.create({ ...wompiOrderInput, paymentMethod: "contraentrega" });
-    expect(result).toMatchObject({ orderId: 42, orderNumber: "ANT-000042", paymentMethod: "contraentrega" });
+    expect(result).toMatchObject({ orderId: 42, orderNumber: "ANT-001001", paymentMethod: "contraentrega" });
     expect(db.createOrder).toHaveBeenLastCalledWith(expect.objectContaining({ paymentMethod: "contraentrega" }));
+  });
+
+  it("guarda el código y descuento verificados al crear un pedido", async () => {
+    vi.mocked(db.calculateOrderPricing).mockResolvedValueOnce({
+      subtotal: "250000", total: "162500", unitPrices: ["200000"], popupDiscountPercent: 20, popupDiscountAmount: "50000", promoCode: "AHORRA15", promoDiscountPercent: 15, promoDiscountAmount: "37500",
+    });
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.orders.create({ ...wompiOrderInput, promoCode: "ahorra15" })).resolves.toMatchObject({ orderId: 42 });
+    expect(db.createOrder).toHaveBeenLastCalledWith(expect.objectContaining({
+      popupDiscountPercent: 20, popupDiscountAmount: "50000", promoCode: "AHORRA15", promoDiscountPercent: 15, promoDiscountAmount: "37500", total: "162500",
+    }));
+    expect(notifyTelegramAboutOrderMock).toHaveBeenLastCalledWith(expect.objectContaining({ popupDiscountPercent: 20, popupDiscountAmount: "50000", promoCode: "AHORRA15", promoDiscountAmount: "37500" }));
   });
 
   it("consulta la información pública de pago solo mediante token", async () => {
@@ -349,6 +408,19 @@ describe("orders router", () => {
     await expect(userCaller.orders.adminList()).rejects.toThrow();
   });
 
+  it("permite abrir un pedido administrativo por su consecutivo público", async () => {
+    const userCaller = appRouter.createCaller(makeCtx("user"));
+    await expect(userCaller.orders.adminGetByOrderNumber({ orderNumber: "ANT-030101" })).rejects.toThrow();
+
+    const adminCaller = appRouter.createCaller(makeCtx("admin"));
+    await expect(adminCaller.orders.adminGetByOrderNumber({ orderNumber: "ant-030101" })).resolves.toMatchObject({
+      id: 42,
+      orderNumber: "ANT-030101",
+    });
+    expect(db.getOrderByNumber).toHaveBeenLastCalledWith("ant-030101");
+    expect(db.getOrderItems).toHaveBeenLastCalledWith(42);
+  });
+
   it("updateStatus requires admin role", async () => {
     const userCaller = appRouter.createCaller(makeCtx("user"));
     await expect(userCaller.orders.updateStatus({ id: 1, status: "despachado" })).rejects.toThrow();
@@ -357,19 +429,29 @@ describe("orders router", () => {
     await expect(adminCaller.orders.updateStatus({ id: 1, status: "despachado" })).resolves.not.toThrow();
   });
 
+  it("permite borrar pedidos solamente a administradores", async () => {
+    const userCaller = appRouter.createCaller(makeCtx("user"));
+    await expect(userCaller.orders.delete({ id: 42 })).rejects.toThrow();
+
+    const adminCaller = appRouter.createCaller(makeCtx("admin"));
+    await expect(adminCaller.orders.delete({ id: 42 })).resolves.not.toThrow();
+    expect(db.deleteOrder).toHaveBeenLastCalledWith(42);
+  });
+
   it("permite rastrear públicamente por número y gestionar la guía solo como admin", async () => {
     const publicCaller = appRouter.createCaller(makePublicCtx());
     await expect(publicCaller.orders.track({ orderNumber: "ANT-000042" })).resolves.toMatchObject({
       orderNumber: "ANT-000042",
       status: "pendiente",
+      shippingCarrier: "interrapidisimo",
     });
 
     const userCaller = appRouter.createCaller(makeCtx("user"));
-    await expect(userCaller.orders.updateShipment({ id: 1, status: "despachado", interrapidisimoGuide: "123456789" })).rejects.toThrow();
+    await expect(userCaller.orders.updateShipment({ id: 1, status: "despachado", shippingCarrier: "coordinadora", interrapidisimoGuide: "123456789" })).rejects.toThrow();
 
     const adminCaller = appRouter.createCaller(makeCtx("admin"));
-    await expect(adminCaller.orders.updateShipment({ id: 1, status: "despachado", interrapidisimoGuide: "123456789" })).resolves.not.toThrow();
-    expect(db.updateOrderShipment).toHaveBeenLastCalledWith(1, expect.objectContaining({ status: "despachado", interrapidisimoGuide: "123456789" }));
+    await expect(adminCaller.orders.updateShipment({ id: 1, status: "despachado", shippingCarrier: "coordinadora", interrapidisimoGuide: "123456789" })).resolves.not.toThrow();
+    expect(db.updateOrderShipment).toHaveBeenLastCalledWith(1, expect.objectContaining({ status: "despachado", shippingCarrier: "coordinadora", interrapidisimoGuide: "123456789" }));
   });
 });
 

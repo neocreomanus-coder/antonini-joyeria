@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getDisplayProductPrice, getPreviewProductPrice } from "./productPricing";
+import { getDisplayProductPrice, getPopupOfferForProduct, getPreviewProductPrice } from "./productPricing";
 
 describe("getPreviewProductPrice", () => {
   it("conserva el precio cuando agregar el producto no activa descuento", () => {
@@ -35,6 +35,22 @@ describe("getPreviewProductPrice", () => {
     expect(getDisplayProductPrice(143000, 135850, 0)).toMatchObject({
       compareAtPrice: 143000,
       hasDiscount: false,
+    });
+  });
+
+  it("aplica únicamente la oferta activa del popup al producto seleccionado", () => {
+    expect(getPopupOfferForProduct(4, 2_000_000, { enabled: true, productId: 4, discount: 50 })).toEqual({
+      price: 1_000_000,
+      discountPercent: 50,
+      hasPopupOffer: true,
+    });
+    expect(getPopupOfferForProduct(5, 2_000_000, { enabled: true, productId: 4, discount: 50 })).toMatchObject({
+      price: 2_000_000,
+      hasPopupOffer: false,
+    });
+    expect(getPopupOfferForProduct(4, 2_000_000, { enabled: false, productId: 4, discount: 50 })).toMatchObject({
+      price: 2_000_000,
+      hasPopupOffer: false,
     });
   });
 });

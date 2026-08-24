@@ -3,9 +3,10 @@ import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useCart } from "@/contexts/CartContext";
 import { getNextCarouselIndex } from "@/lib/promoCarousel";
-import { getDisplayProductPrice } from "@/lib/productPricing";
+import { getDisplayProductPrice, getPopupOfferForProduct } from "@/lib/productPricing";
 import { getAssignedJewelryProducts, getAssignedTrendingProducts } from "@/lib/homeSectionFilters";
 import { getHomeProductCarouselOffset } from "@/lib/homeProductCarousel";
+import { getRenderableTestimonials, getTestimonialWindow } from "@/lib/testimonialCarousel";
 import { ShoppingBag, Star, ChevronLeft, ChevronRight, Shield, Truck, Award, Gem, Check, Sparkles, X, Pause, Play } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -193,14 +194,16 @@ function formatPrice(p: string | number) {
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
 function ProductCard({ product, onAddSuccess }: { product: any; onAddSuccess?: (name: string, img: string) => void }) {
-  const { addItem, itemCount } = useCart();
+  const { addItem } = useCart();
+  const { data: popupConfig } = trpc.siteConfig.getPopup.useQuery(undefined, { refetchOnWindowFocus: false });
   const [adding, setAdding] = useState(false);
   const imgs: string[] = Array.isArray(product.imageUrls) ? product.imageUrls : [];
-  const price = Number(product.basePrice);
+  const regularPrice = Number(product.basePrice);
+  const { price, discountPercent: popupDiscountPercent } = getPopupOfferForProduct(product.id, regularPrice, popupConfig);
   const configuredOriginalPrice = Number(product.originalPrice ?? product.original_price ?? 0);
-  const { discountedPrice: discounted, compareAtPrice, hasDiscount, hasQuantityDiscount } = getDisplayProductPrice(price, configuredOriginalPrice, itemCount);
-  const displayedPrice = hasQuantityDiscount ? discounted : price;
-  const displayedOriginalPrice = configuredOriginalPrice > price ? configuredOriginalPrice : (hasQuantityDiscount ? price : 0);
+  const compareAtPrice = popupDiscountPercent > 0 ? Math.max(configuredOriginalPrice, regularPrice) : configuredOriginalPrice;
+  const { discountedPrice: displayedPrice, hasDiscount } = getDisplayProductPrice(price, compareAtPrice, 0);
+  const displayedOriginalPrice = compareAtPrice > displayedPrice ? compareAtPrice : 0;
   const productGender = product.gender === "masculino" ? "Masculino" : product.gender === "femenino" ? "Femenino" : product.gender === "unisex" ? "Unisex" : product.gender === "ninos" ? "Niños" : "";
 
   const handleAdd = async (e: React.MouseEvent) => {
@@ -222,7 +225,7 @@ function ProductCard({ product, onAddSuccess }: { product: any; onAddSuccess?: (
         )}
         {hasDiscount && (
           <div className="absolute top-2 left-2 bg-brand-green text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-            {hasQuantityDiscount ? (itemCount >= 3 ? "15% OFF" : itemCount >= 2 ? "10% OFF" : "5% OFF") : "OFERTA"}
+            {popupDiscountPercent > 0 ? `${popupDiscountPercent}% OFF` : "OFERTA"}
           </div>
         )}
         <button onClick={handleAdd}
@@ -309,12 +312,21 @@ function CategorySection({ title, products, viewAllSlug, onAddSuccess }: { title
 // ─── Testimonials ─────────────────────────────────────────────────────────────
 function TestimonialsSection({ testimonials }: { testimonials: any[] }) {
   const [idx, setIdx] = useState(0);
-  const total = testimonials.length;
-  const next = () => setIdx(i => (i + 1) % total);
-  const prev = () => setIdx(i => (i - 1 + total) % total);
-  useEffect(() => { const t = setInterval(next, 5000); return () => clearInterval(t); }, [total]);
+  const renderableTestimonials = getRenderableTestimonials(testimonials);
+  const total = renderableTestimonials.length;
+  const next = () => setIdx(i => total ? (i + 1) % total : 0);
+  const prev = () => setIdx(i => total ? (i - 1 + total) % total : 0);
+  useEffect(() => {
+    if (!total) {
+      setIdx(0);
+      return;
+    }
+    setIdx(current => current >= total ? 0 : current);
+    const timer = window.setInterval(() => setIdx(current => (current + 1) % total), 5000);
+    return () => window.clearInterval(timer);
+  }, [total]);
   if (!total) return null;
-  const shown = Array.from({ length: Math.min(3, total) }, (_, i) => testimonials[(idx + i) % total]);
+  const shown = getTestimonialWindow(renderableTestimonials, idx);
   return (
     <section className="py-16 bg-gray-50">
       <div className="container">
@@ -337,7 +349,7 @@ function TestimonialsSection({ testimonials }: { testimonials: any[] }) {
         <div className="flex justify-center gap-3 mt-8">
           <button onClick={prev} className="p-2 border border-gray-200 rounded-full hover:border-brand-green hover:text-brand-green transition-colors"><ChevronLeft size={18} /></button>
           <div className="flex gap-1.5 items-center">
-            {testimonials.map((_, i) => <button key={i} onClick={() => setIdx(i)} className={`h-2 rounded-full transition-all ${i === idx ? "bg-brand-green w-5" : "bg-gray-300 w-2"}`} />)}
+            {renderableTestimonials.map((_, i) => <button key={i} onClick={() => setIdx(i)} className={`h-2 rounded-full transition-all ${i === idx ? "bg-brand-green w-5" : "bg-gray-300 w-2"}`} />)}
           </div>
           <button onClick={next} className="p-2 border border-gray-200 rounded-full hover:border-brand-green hover:text-brand-green transition-colors"><ChevronRight size={18} /></button>
         </div>

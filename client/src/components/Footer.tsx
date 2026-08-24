@@ -91,7 +91,10 @@ export default function Footer() {
             <h3 className="text-brand-gold font-semibold text-xs tracking-widest uppercase mb-4">Información</h3>
             <ul className="space-y-2">
               <li><Link href="/catalogo" className="text-white/70 text-sm hover:text-brand-gold transition-colors">Catálogo</Link></li>
-              <li><a href="#" className="text-white/70 text-sm hover:text-brand-gold transition-colors">Preguntas Frecuentes</a></li>
+              <li><Link href="/quienes-somos" className="text-white/70 text-sm hover:text-brand-gold transition-colors">Quiénes somos</Link></li>
+              <li><Link href="/terminos-y-condiciones" className="text-white/70 text-sm hover:text-brand-gold transition-colors">Términos y condiciones</Link></li>
+              <li><Link href="/cambios-y-devoluciones" className="text-white/70 text-sm hover:text-brand-gold transition-colors">Cambios y devoluciones</Link></li>
+              <li><Link href="/politica-de-envios" className="text-white/70 text-sm hover:text-brand-gold transition-colors">Política de envíos</Link></li>
             </ul>
           </div>
 
@@ -109,7 +112,7 @@ export default function Footer() {
               </li>
               <li className="flex items-center gap-2.5 text-white/70 text-sm">
                 <Phone size={15} className="text-brand-gold flex-shrink-0" />
-                <a href="https://wa.me/573163930853" target="_blank" rel="noopener noreferrer" className="hover:text-brand-gold transition-colors">WhatsApp: +57 316 393 0853</a>
+                <a href="https://wa.me/573169308533" target="_blank" rel="noopener noreferrer" className="hover:text-brand-gold transition-colors">WhatsApp: +57 316 930 8533</a>
               </li>
               <li className="flex items-start gap-2.5 text-white/70 text-sm">
                 <Clock size={15} className="text-brand-gold mt-0.5 flex-shrink-0" />

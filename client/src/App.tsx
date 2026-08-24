@@ -15,6 +15,7 @@ import Checkout from "./pages/Checkout";
 import WompiPaymentInstructions from "./pages/WompiPaymentInstructions";
 import OrderConfirmation from "./pages/OrderConfirmation";
 import TrackOrder from "./pages/TrackOrder";
+import InstitutionalPage from "./pages/InstitutionalPage";
 
 import OrderDetail from "./pages/OrderDetail";
 import AdminLayout from "./pages/admin/AdminLayout";
@@ -29,6 +30,7 @@ import WelcomePopup from "./components/WelcomePopup";
 import AdminPopup from "./pages/admin/AdminPopup";
 import AdminPromoCarousel from "./pages/admin/AdminPromoCarousel";
 import AdminDeliveryPhotos from "./pages/admin/AdminDeliveryPhotos";
+import AdminPromoCodes from "./pages/admin/AdminPromoCodes";
 
 function AdminRoutes() {
   return (
@@ -37,12 +39,13 @@ function AdminRoutes() {
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/productos" component={AdminProducts} />
         <Route path="/admin/categorias" component={AdminCategories} />
-        <Route path="/admin/pedidos/:id" component={AdminOrderDetail} />
+        <Route path="/admin/pedidos/:orderNumber" component={AdminOrderDetail} />
         <Route path="/admin/pedidos" component={AdminOrders} />
         <Route path="/admin/hero" component={AdminHero} />
         <Route path="/admin/promociones" component={AdminPromoCarousel} />
         <Route path="/admin/popup" component={AdminPopup} />
         <Route path="/admin/entregas" component={AdminDeliveryPhotos} />
+        <Route path="/admin/codigos-promocionales" component={AdminPromoCodes} />
       </Switch>
     </AdminLayout>
   );
@@ -59,9 +62,13 @@ function Router() {
       <Route path="/pago/wompi/:orderId" component={WompiPaymentInstructions} />
       <Route path="/pedido-confirmado/:orderId" component={OrderConfirmation} />
       <Route path="/rastrear-pedido" component={TrackOrder} />
+      <Route path="/quienes-somos" component={() => <InstitutionalPage pageKey="quienes-somos" />} />
+      <Route path="/terminos-y-condiciones" component={() => <InstitutionalPage pageKey="terminos-y-condiciones" />} />
+      <Route path="/cambios-y-devoluciones" component={() => <InstitutionalPage pageKey="cambios-y-devoluciones" />} />
+      <Route path="/politica-de-envios" component={() => <InstitutionalPage pageKey="politica-de-envios" />} />
 
       <Route path="/admin" component={AdminRoutes} />
-      <Route path="/admin/pedidos/:id" component={AdminRoutes} />
+      <Route path="/admin/pedidos/:orderNumber" component={AdminRoutes} />
       <Route path="/admin/:rest*" component={AdminRoutes} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

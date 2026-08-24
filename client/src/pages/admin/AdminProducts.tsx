@@ -17,7 +17,7 @@ export default function AdminProducts() {
   const [uploading, setUploading] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [form, setForm] = useState({ name: "", slug: "", materials: ["ORO 18K NACIONAL"], basePrice: "", originalPrice: "", categoryId: "", stock: "99", featured: false, homeSection: "", volumeMl: "", gender: "" });
+  const [form, setForm] = useState({ name: "", slug: "", reference: "", materials: ["ORO 18K NACIONAL"], basePrice: "", originalPrice: "", categoryId: "", stock: "99", featured: false, homeSection: "", volumeMl: "", gender: "" });
 
   // ── Variants state ──
   const RING_SIZES   = ["5","6","7","8","9","10","11","12","13","14"];
@@ -25,10 +25,16 @@ export default function AdminProducts() {
   const [variantType, setVariantType] = useState<"none"|"tallas"|"largos">("none");
   const [selectedSizes, setSelectedSizes]   = useState<string[]>([]);
   const [selectedLengths, setSelectedLengths] = useState<string[]>([]);
+  const [customSize, setCustomSize] = useState("");
   const [customLength, setCustomLength] = useState("");
 
   const toggleSize = (v: string) => setSelectedSizes(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
   const toggleLength = (v: string) => setSelectedLengths(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
+  const addCustomSize = () => {
+    const v = customSize.trim();
+    if (v && !selectedSizes.includes(v)) { setSelectedSizes(p => [...p, v]); }
+    setCustomSize("");
+  };
   const addCustomLength = () => {
     const v = customLength.trim();
     if (v && !selectedLengths.includes(v)) { setSelectedLengths(p => [...p, v]); }
@@ -65,13 +71,13 @@ export default function AdminProducts() {
   } });
   const reset = () => {
     setShowForm(false); setEditId(null); setImages([]);
-    setForm({ name: "", slug: "", materials: ["ORO 18K NACIONAL"], basePrice: "", originalPrice: "", categoryId: "", stock: "99", featured: false, homeSection: "", volumeMl: "", gender: "" });
-    setVariantType("none"); setSelectedSizes([]); setSelectedLengths([]); setCustomLength("");
+    setForm({ name: "", slug: "", reference: "", materials: ["ORO 18K NACIONAL"], basePrice: "", originalPrice: "", categoryId: "", stock: "99", featured: false, homeSection: "", volumeMl: "", gender: "" });
+    setVariantType("none"); setSelectedSizes([]); setSelectedLengths([]); setCustomSize(""); setCustomLength("");
   };
 
   const openEdit = (p: any) => {
     setEditId(p.id);
-    setForm({ name: p.name, slug: p.slug, materials: Array.isArray(p.materials) && p.materials.length > 0 ? p.materials.map(normalizeMaterialValue) : [normalizeMaterialValue(p.material)], basePrice: p.basePrice, originalPrice: p.originalPrice ?? "", categoryId: String(p.categoryId ?? ""), stock: String(p.stock ?? 99), featured: p.featured ?? false, homeSection: p.homeSection ?? "", volumeMl: p.volumeMl ? String(p.volumeMl) : "", gender: p.gender ?? "" });
+    setForm({ name: p.name, slug: p.slug, reference: p.reference ?? "", materials: Array.isArray(p.materials) && p.materials.length > 0 ? p.materials.map(normalizeMaterialValue) : [normalizeMaterialValue(p.material)], basePrice: p.basePrice, originalPrice: p.originalPrice ?? "", categoryId: String(p.categoryId ?? ""), stock: String(p.stock ?? 99), featured: p.featured ?? false, homeSection: p.homeSection ?? "", volumeMl: p.volumeMl ? String(p.volumeMl) : "", gender: p.gender ?? "" });
     setImages(Array.isArray(p.imageUrls) ? p.imageUrls : []);
     // Load existing variants
     const variants: any[] = Array.isArray(p.variants) ? p.variants : [];
@@ -120,7 +126,7 @@ export default function AdminProducts() {
         : variantType === "largos"
         ? selectedLengths.map(v => ({ type: "length" as const, value: v, stock: 99 }))
         : [];
-    const data = { name: form.name, slug: form.slug, materials: form.materials, basePrice: form.basePrice, originalPrice: form.originalPrice || null, categoryId: parseInt(form.categoryId), featured: form.featured, imageUrls: images, stock: parseInt(form.stock) || 0, variants, homeSection: form.homeSection || undefined, volumeMl: form.volumeMl ? parseInt(form.volumeMl) : undefined, gender: (form.gender as any) || undefined };
+    const data = { name: form.name, slug: form.slug, reference: form.reference.trim() || null, materials: form.materials, basePrice: form.basePrice, originalPrice: form.originalPrice || null, categoryId: parseInt(form.categoryId), featured: form.featured, imageUrls: images, stock: parseInt(form.stock) || 0, variants, homeSection: form.homeSection || undefined, volumeMl: form.volumeMl ? parseInt(form.volumeMl) : undefined, gender: (form.gender as any) || undefined };
     if (editId) updateMutation.mutate({ id: editId, ...data });
     else createMutation.mutate(data);
   };
@@ -218,6 +224,7 @@ export default function AdminProducts() {
                   </div>
                   {[
                     { key: "slug", label: "Slug (URL)", placeholder: "cadena-cubana-oro-18k" },
+                    { key: "reference", label: "Referencia manual", placeholder: "ej: ANT-CAD-001" },
                     { key: "basePrice", label: "Precio actual *", placeholder: "250000" },
                     { key: "originalPrice", label: "Precio anterior (tachado)", placeholder: "ej: 280000" },
                     { key: "stock", label: "Stock", placeholder: "99" },
@@ -288,7 +295,7 @@ export default function AdminProducts() {
                         { value: "largos", label: "Largo en cm" },
                       ].map(opt => (
                         <button key={opt.value} type="button"
-                          onClick={() => { setVariantType(opt.value as any); setSelectedSizes([]); setSelectedLengths([]); }}
+                          onClick={() => { setVariantType(opt.value as any); setSelectedSizes([]); setSelectedLengths([]); setCustomSize(""); setCustomLength(""); }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${variantType === opt.value ? "bg-brand-green text-white border-brand-green" : "bg-white text-gray-600 border-gray-200 hover:border-brand-green"}`}>
                           {opt.label}
                         </button>
@@ -299,13 +306,25 @@ export default function AdminProducts() {
                     {variantType === "tallas" && (
                       <div>
                         <p className="text-xs text-gray-400 mb-2">Selecciona las tallas disponibles:</p>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-2 mb-3">
                           {RING_SIZES.map(s => (
                             <button key={s} type="button" onClick={() => toggleSize(s)}
                               className={`w-10 h-10 rounded-lg text-sm font-semibold border-2 transition-colors ${selectedSizes.includes(s) ? "bg-brand-green text-white border-brand-green" : "bg-white text-gray-600 border-gray-200 hover:border-brand-green"}`}>
                               {s}
                             </button>
                           ))}
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="text" value={customSize} onChange={e => setCustomSize(e.target.value)}
+                            onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addCustomSize())}
+                            placeholder="Otra talla (ej: 5.5)"
+                            className="w-40 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-green transition-colors"
+                          />
+                          <button type="button" onClick={addCustomSize}
+                            className="px-3 py-2 bg-brand-green text-white rounded-lg text-xs font-semibold hover:bg-brand-green-light transition-colors">
+                            + Agregar talla
+                          </button>
                         </div>
                         {selectedSizes.length > 0 && (
                           <p className="text-xs text-brand-green mt-2 font-medium">✓ Tallas activas: {selectedSizes.sort((a,b)=>Number(a)-Number(b)).join(", ")}</p>

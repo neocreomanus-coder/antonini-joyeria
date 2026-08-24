@@ -28,3 +28,19 @@ export function getDisplayProductPrice(currentPrice: number, originalPrice: numb
     hasDiscount: preview.hasDiscount || compareAtPrice > currentPrice,
   };
 }
+
+export type PopupOfferConfig = {
+  enabled?: boolean;
+  productId?: number | null;
+  discount?: number;
+} | null | undefined;
+
+export function getPopupOfferForProduct(productId: number, regularPrice: number, popupConfig: PopupOfferConfig) {
+  const discountPercent = popupConfig?.enabled && popupConfig.productId === productId && (popupConfig.discount ?? 0) > 0
+    ? popupConfig.discount ?? 0
+    : 0;
+  const price = discountPercent > 0
+    ? Math.round(regularPrice * (1 - discountPercent / 100) * 100) / 100
+    : regularPrice;
+  return { price, discountPercent, hasPopupOffer: discountPercent > 0 };
+}

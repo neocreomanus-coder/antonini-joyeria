@@ -79,7 +79,7 @@ export default function WompiPaymentInstructions() {
               <div className="mb-8 grid grid-cols-1 gap-4 border-y border-black/15 py-5 sm:grid-cols-2">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Número de pedido</p>
-                  <p className="mt-1 text-lg font-bold text-black">{formatOrderNumber(order.id)}</p>
+                  <p className="mt-1 text-lg font-bold text-black">{formatOrderNumber(order.orderNumber ?? order.id)}</p>
                 </div>
                 <div className="sm:text-right">
                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Valor a pagar</p>

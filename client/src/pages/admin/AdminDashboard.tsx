@@ -93,7 +93,7 @@ export default function AdminDashboard() {
                       <ShoppingCart size={16} className="text-brand-green" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800">Pedido {formatOrderNumber(order.id)}</p>
+                      <p className="text-sm font-semibold text-gray-800">Pedido {formatOrderNumber(order.orderNumber ?? order.id)}</p>
                       <p className="text-xs text-gray-500 truncate">{order.shippingAddress?.fullName ?? "—"}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -103,7 +103,7 @@ export default function AdminDashboard() {
                         {s.label}
                       </span>
                     </div>
-                    <Link href={`/admin/pedidos/${order.id}`} className="p-1.5 text-gray-300 hover:text-brand-green transition-colors flex-shrink-0">
+                    <Link href={`/admin/pedidos/${formatOrderNumber(order.orderNumber ?? order.id)}`} className="p-1.5 text-gray-300 hover:text-brand-green transition-colors flex-shrink-0">
                       <Eye size={16} />
                     </Link>
                   </div>

@@ -8,8 +8,8 @@ export type MaterialOption = {
 export const MATERIAL_OPTIONS: MaterialOption[] = [
   {
     value: "PLATA LEY 925",
-    label: "Plata Ley 925",
-    detail: "Acabado plata",
+    label: "Plata Italiana Ley 925",
+    detail: "Plata italiana certificada",
     swatchClass: "bg-[radial-gradient(circle_at_30%_25%,#ffffff_0%,#d7dce1_34%,#86909c_70%,#f8fafc_100%)]",
   },
   {
@@ -17,6 +17,18 @@ export const MATERIAL_OPTIONS: MaterialOption[] = [
     label: "Oro 18K Nacional",
     detail: "Oro macizo nacional",
     swatchClass: "bg-[radial-gradient(circle_at_34%_20%,#fffde2_0%,#fff6a8_12%,#ffd42a_38%,#c38800_72%,#fff1a0_100%)]",
+  },
+  {
+    value: "ORO BLANCO",
+    label: "Oro Blanco",
+    detail: "Acabado blanco brillante",
+    swatchClass: "bg-[radial-gradient(circle_at_31%_24%,#ffffff_0%,#f8fafc_18%,#cbd5e1_47%,#7b8798_76%,#ffffff_100%)]",
+  },
+  {
+    value: "ORO ROSA",
+    label: "Oro Rosa",
+    detail: "Acabado rosa elegante",
+    swatchClass: "bg-[radial-gradient(circle_at_31%_24%,#fff6f1_0%,#ffd9c9_24%,#de9a83_52%,#9c574b_78%,#ffe8de_100%)]",
   },
   {
     value: "ORO LAMINADO AMERICANO",
