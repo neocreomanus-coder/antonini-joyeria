@@ -130,7 +130,7 @@ export default function Footer() {
       {/* Payment Methods */}
       <div className="border-t border-white/10">
         <div className="container py-6 flex items-center justify-center">
-          <img src="/manus-storage/payment-methods-professional_a6bdec4f.png" alt="Métodos de Pago Seguros" className="w-full max-w-2xl h-auto object-contain" />
+          <img src="/manus-storage/payment-methods-footer-updated_428bf072.png" alt="Métodos de Pago Seguros" className="w-full max-w-2xl h-auto object-contain" />
         </div>
       </div>
 
