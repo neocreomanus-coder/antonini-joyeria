@@ -45,6 +45,12 @@ const productsRouter = router({
     offset: z.number().optional(),
   }).optional()).query(({ input }) => db.getProducts(input)),
 
+  count: publicProcedure.input(z.object({
+    categoryId: z.number().optional(),
+    search: z.string().optional(),
+    gender: z.enum(["masculino", "femenino", "unisex", "ninos"]).optional(),
+  }).optional()).query(({ input }) => db.getProductsCount(input)),
+
   byHomeSection: publicProcedure.input(z.object({ section: z.string(), limit: z.number().optional() })).query(({ input }) => db.getProducts({ homeSection: input.section, limit: input.limit ?? 8 })),
 
   featured: publicProcedure.query(() => db.getProducts({ featured: true, limit: 12 })),
@@ -56,12 +62,22 @@ const productsRouter = router({
     return { ...product, variants };
   }),
 
+  getById: publicProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+    const product = await db.getPublicProductById(input.id);
+    if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
+    return product;
+  }),
+
   getVariants: publicProcedure.input(z.object({ productId: z.number() })).query(({ input }) => db.getProductVariants(input.productId)),
 
   // Admin procedures
   adminList: adminProcedure.input(z.object({
     limit: z.number().optional(), offset: z.number().optional(), search: z.string().optional(),
   }).optional()).query(({ input }) => db.getAllProducts(input)),
+
+  adminCount: adminProcedure.input(z.object({
+    search: z.string().optional(),
+  }).optional()).query(({ input }) => db.getAllProductsCount(input)),
 
   create: adminProcedure.input(z.object({
     name: z.string().min(1), slug: z.string().min(1),

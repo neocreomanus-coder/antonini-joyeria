@@ -21,6 +21,8 @@ export default function Catalogo() {
   const [search, setSearch] = useState(initialSearch);
   const [searchInput, setSearchInput] = useState(initialSearch);
   const [selectedGender, setSelectedGender] = useState<"" | "masculino" | "femenino" | "unisex" | "ninos">("");
+  const PAGE_SIZE = 60;
+  const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
 
   const { data: allCategories = [] } = trpc.categories.list.useQuery();
   const activeCategory = allCategories.find(c => c.slug === activeSlug);
@@ -29,8 +31,12 @@ export default function Catalogo() {
     categoryId: activeCategory?.id ? Number(activeCategory.id) : undefined,
     search: search || undefined,
     gender: selectedGender || undefined,
-    limit: 60,
+    limit: visibleLimit + 1,
   });
+
+  useEffect(() => {
+    setVisibleLimit(PAGE_SIZE);
+  }, [activeSlug, search, selectedGender]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +46,9 @@ export default function Catalogo() {
   const activeName = getPublicCategory(activeSlug)?.name ?? "Todos";
   const isPerfumeria = isPerfumeryCategory(activeSlug);
   const subcategoryOptions = getProductSubcategories(activeSlug);
-  const products = activeSlug ? queriedProducts : queriedProducts.filter(isJewelryProduct);
+  const hasMore = queriedProducts.length > visibleLimit;
+  const loadedProducts = queriedProducts.slice(0, visibleLimit);
+  const products = activeSlug ? loadedProducts : loadedProducts.filter(isJewelryProduct);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -138,9 +146,23 @@ export default function Catalogo() {
               <p className="text-[oklch(0.52_0.02_60)] text-sm">Intenta con otra categoría o término de búsqueda</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {products.map(p => <ProductCard key={p.id} {...p} />)}
-            </div>
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {products.map(p => <ProductCard key={p.id} {...p} />)}
+              </div>
+
+              {hasMore && (
+                <div className="mt-10 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleLimit(current => current + PAGE_SIZE)}
+                    className="rounded-xl border border-brand-green px-6 py-3 text-sm font-semibold text-brand-green transition-colors hover:bg-brand-green hover:text-white"
+                  >
+                    Cargar más productos
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>

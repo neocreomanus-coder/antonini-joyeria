@@ -9,19 +9,12 @@ export default function WelcomePopup() {
   const [location] = useLocation();
   const [visible, setVisible] = useState(false);
   const { data: config } = trpc.siteConfig.getPopup.useQuery();
-  const { data: product } = trpc.products.getBySlug.useQuery(
-    { slug: "__popup_product__" },
-    { enabled: false }
-  );
-  // Fetch product by ID when config has productId
+  // Fetch only the configured popup product directly by ID
   const productId = config?.productId;
-  const { data: allProducts } = trpc.products.list.useQuery(
-    { limit: 100 },
+  const { data: popupProduct } = trpc.products.getById.useQuery(
+    { id: productId ?? 0 },
     { enabled: !!productId }
   );
-  const popupProduct = productId && allProducts
-    ? (allProducts as any[]).find((p: any) => p.id === productId)
-    : null;
 
   const { addItem } = useCart();
   const [adding, setAdding] = useState(false);

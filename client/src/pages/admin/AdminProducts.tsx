@@ -12,6 +12,8 @@ function slugify(s: string) { return s.toLowerCase().normalize("NFD").replace(/[
 export default function AdminProducts() {
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -41,7 +43,28 @@ export default function AdminProducts() {
     setCustomLength("");
   };
 
-  const { data: products = [], isLoading } = trpc.products.adminList.useQuery({ search: search || undefined });
+  const { data: products = [], isLoading } = trpc.products.adminList.useQuery({
+    search: search || undefined,
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
+  });
+
+  const { data: totalProducts = 0 } = trpc.products.adminCount.useQuery({
+    search: search || undefined,
+  });
+
+  const totalPages = Math.max(1, Math.ceil(totalProducts / PAGE_SIZE));
+  const firstProduct = totalProducts === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const lastProduct = Math.min(page * PAGE_SIZE, totalProducts);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const { data: categories = [] } = trpc.categories.listAll.useQuery();
   const selectedCategory = (categories as any[]).find((category: any) => String(category.id) === form.categoryId);
   const isPerfumeriaCategory = selectedCategory?.slug === "perfumeria";
@@ -61,12 +84,18 @@ export default function AdminProducts() {
     }
   }, [form.categoryId, categories]);
 
-  const createMutation = trpc.products.create.useMutation({ onSuccess: () => { toast.success("Producto creado"); utils.products.adminList.invalidate(); reset(); } });
+  const createMutation = trpc.products.create.useMutation({ onSuccess: () => {
+    toast.success("Producto creado");
+    utils.products.adminList.invalidate();
+    utils.products.adminCount.invalidate();
+    reset();
+  } });
   const updateMutation = trpc.products.update.useMutation({ onSuccess: () => { toast.success("Actualizado"); utils.products.adminList.invalidate(); reset(); } });
   const toggleMutation = trpc.products.toggleActive.useMutation({ onSuccess: () => utils.products.adminList.invalidate() });
   const deleteMutation = trpc.products.delete.useMutation({ onSuccess: (result: any) => {
     toast.success(result?.archived ? "Producto retirado de la tienda; se conservaron sus pedidos" : "Producto eliminado");
     utils.products.adminList.invalidate();
+    utils.products.adminCount.invalidate();
     reset();
   } });
   const reset = () => {
@@ -143,7 +172,14 @@ export default function AdminProducts() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl md:text-3xl font-sans font-bold text-gray-900">Productos</h1>
-            <p className="text-gray-500 text-sm mt-1">{products.length} productos en el catálogo</p>
+            <p className="text-gray-500 text-sm mt-1">
+              {totalProducts} productos en el catálogo
+              {totalProducts > 0 && (
+                <span className="ml-2 text-gray-400">
+                  · Mostrando {firstProduct}–{lastProduct}
+                </span>
+              )}
+            </p>
           </div>
           <button onClick={() => { reset(); setShowForm(true); }} className="flex items-center gap-2 bg-brand-green text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-brand-green-light transition-colors shadow-sm">
             <Plus size={18} /> Nuevo Producto
@@ -190,6 +226,32 @@ export default function AdminProducts() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {!isLoading && totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:border-brand-green hover:text-brand-green disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Anterior
+            </button>
+
+            <span className="px-4 py-2 text-sm text-gray-500">
+              Página {page} de {totalPages}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:border-brand-green hover:text-brand-green disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Siguiente
+            </button>
           </div>
         )}
 

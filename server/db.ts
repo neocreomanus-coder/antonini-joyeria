@@ -135,7 +135,7 @@ export async function getProducts(opts?: { categoryId?: number; search?: string;
     const s = `%${opts.search}%`;
     conditions.push(or(like(products.name, s), like(products.description, s)) as ReturnType<typeof eq>);
   }
-  const rows = await db.select({
+  let query = db.select({
     id: products.id, name: products.name, slug: products.slug,
     description: products.description, material: products.material, materialsRaw: products.materials,
     basePrice: products.basePrice, originalPrice: products.originalPrice, reference: products.reference, categoryId: products.categoryId,
@@ -151,9 +151,46 @@ export async function getProducts(opts?: { categoryId?: number; search?: string;
     .leftJoin(categories, eq(products.categoryId, categories.id))
     .where(and(...conditions))
     .orderBy(desc(products.createdAt))
-    .limit(opts?.limit ?? 100)
-    .offset(opts?.offset ?? 0);
+    .$dynamic();
+
+  if (opts?.limit !== undefined) {
+    query = query.limit(opts.limit).offset(opts.offset ?? 0);
+  }
+
+  const rows = await query;
   return rows.map(parseProduct);
+}
+
+export async function getProductsCount(opts?: { categoryId?: number; search?: string; featured?: boolean; homeSection?: string; gender?: "masculino" | "femenino" | "unisex" | "ninos" }) {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const conditions = [eq(products.active, true)];
+
+  if (opts?.categoryId) conditions.push(eq(products.categoryId, opts.categoryId));
+  if (opts?.featured) conditions.push(eq(products.featured, true));
+  if (opts?.homeSection) conditions.push(eq(products.homeSection, opts.homeSection) as ReturnType<typeof eq>);
+
+  if (opts?.gender) {
+    const genderValues = getGenderFilterValues(opts.gender);
+    conditions.push(
+      genderValues.length === 1
+        ? eq(products.gender, genderValues[0]) as ReturnType<typeof eq>
+        : or(...genderValues.map(gender => eq(products.gender, gender))) as ReturnType<typeof eq>
+    );
+  }
+
+  if (opts?.search) {
+    const s = `%${opts.search}%`;
+    conditions.push(or(like(products.name, s), like(products.description, s)) as ReturnType<typeof eq>);
+  }
+
+  const result = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(products)
+    .where(and(...conditions));
+
+  return Number(result[0]?.count ?? 0);
 }
 
 export async function getAllProducts(opts?: { limit?: number; offset?: number; search?: string }) {
@@ -162,9 +199,15 @@ export async function getAllProducts(opts?: { limit?: number; offset?: number; s
   const conditions: ReturnType<typeof eq>[] = [];
   if (opts?.search) {
     const s = `%${opts.search}%`;
-    conditions.push(or(like(products.name, s), like(products.material, s)) as ReturnType<typeof eq>);
+    conditions.push(
+      or(
+        like(products.name, s),
+        like(products.material, s),
+        like(products.reference, s)
+      ) as ReturnType<typeof eq>
+    );
   }
-  const q = db.select({
+  let query = db.select({
     id: products.id, name: products.name, slug: products.slug,
     description: products.description, material: products.material, materialsRaw: products.materials,
     basePrice: products.basePrice, originalPrice: products.originalPrice, reference: products.reference, categoryId: products.categoryId,
@@ -179,10 +222,43 @@ export async function getAllProducts(opts?: { limit?: number; offset?: number; s
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
     .orderBy(desc(products.createdAt))
-    .limit(opts?.limit ?? 100)
-    .offset(opts?.offset ?? 0);
-  const rows = conditions.length ? await q.where(and(...conditions)) : await q;
+    .$dynamic();
+
+  if (conditions.length) {
+    query = query.where(and(...conditions));
+  }
+
+  if (opts?.limit !== undefined) {
+    query = query.limit(opts.limit).offset(opts.offset ?? 0);
+  }
+
+  const rows = await query;
   return rows.map(parseProduct);
+}
+
+export async function getAllProductsCount(opts?: { search?: string }) {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const conditions: ReturnType<typeof eq>[] = [];
+
+  if (opts?.search) {
+    const s = `%${opts.search}%`;
+    conditions.push(
+      or(
+        like(products.name, s),
+        like(products.material, s),
+        like(products.reference, s)
+      ) as ReturnType<typeof eq>
+    );
+  }
+
+  const query = db.select({ count: sql<number>`count(*)` }).from(products);
+  const result = conditions.length
+    ? await query.where(and(...conditions))
+    : await query;
+
+  return Number(result[0]?.count ?? 0);
 }
 
 export async function getProductBySlug(slug: string) {
@@ -211,6 +287,41 @@ export async function getProductById(id: number) {
   if (!db) return undefined;
   const result = await db.select().from(products).where(eq(products.id, id)).limit(1);
   return result[0];
+}
+
+export async function getPublicProductById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.select({
+    id: products.id,
+    name: products.name,
+    slug: products.slug,
+    description: products.description,
+    material: products.material,
+    materialsRaw: products.materials,
+    basePrice: products.basePrice,
+    originalPrice: products.originalPrice,
+    reference: products.reference,
+    categoryId: products.categoryId,
+    active: products.active,
+    featured: products.featured,
+    imageUrlsRaw: products.imageUrls,
+    stock: products.stock,
+    createdAt: products.createdAt,
+    updatedAt: products.updatedAt,
+    categoryName: categories.name,
+    homeSection: products.homeSection,
+    volumeMl: products.volumeMl,
+    gender: products.gender,
+  })
+    .from(products)
+    .leftJoin(categories, eq(products.categoryId, categories.id))
+    .where(and(eq(products.id, id), eq(products.active, true)))
+    .limit(1);
+
+  const product = result[0];
+  return product ? parseProduct(product) : undefined;
 }
 
 export async function getProductVariants(productId: number) {
