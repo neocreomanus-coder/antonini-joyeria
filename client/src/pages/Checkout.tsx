@@ -1,3 +1,4 @@
+import { INVENTORY_ENFORCED } from "@/lib/inventorySettings";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -52,6 +53,11 @@ export default function Checkout() {
   );
   const promoDiscountAmount = appliedPromo ? Math.round(subtotal * (appliedPromo.discountPercent / 100) * 100) / 100 : 0;
   const orderTotal = Math.max(0, Math.round((subtotal - promoDiscountAmount) * 100) / 100);
+  const hasInventoryIssue = INVENTORY_ENFORCED && items.some((item) => {
+    const productStock = Number(item.productStock ?? 0);
+    const availableStock = item.variantId ? Math.min(productStock, Number(item.variantStock ?? 0)) : productStock;
+    return item.quantity > availableStock;
+  });
 
   const applyPromoCode = async () => {
     if (!promoInput.trim()) { toast.error("Escribe un código promocional"); return; }
@@ -69,6 +75,7 @@ export default function Checkout() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.length === 0) { toast.error("Tu carrito está vacío"); return; }
+    if (hasInventoryIssue) { toast.error("Uno o más productos ya no tienen las existencias requeridas. Ajusta el carrito antes de continuar."); return; }
     if (!form.fullName || !form.phone || !form.address || !form.city || !form.department) {
       toast.error("Completa todos los campos obligatorios"); return;
     }
@@ -233,7 +240,7 @@ export default function Checkout() {
                 )}
                 <div className="mt-5 flex items-start gap-3 border border-brand-green/20 bg-brand-green/5 p-4 text-sm text-gray-700">
                   <Truck size={20} className="mt-0.5 shrink-0 text-brand-green" />
-                  <div><strong className="text-brand-green">Envíos con Coordinadora o Inter Rapidísimo.</strong><p className="mt-1 text-xs leading-relaxed text-gray-600">Asignaremos la transportadora y la guía al despachar tu pedido; podrás consultarlas con tu número de pedido.</p></div>
+                  <div><strong className="text-brand-green">Envíos con Coordinadora, Inter Rapidísimo o DHL.</strong><p className="mt-1 text-xs leading-relaxed text-gray-600">Asignaremos la transportadora y la guía al despachar tu pedido; podrás consultarlas con tu número de pedido.</p></div>
                 </div>
               </section>
             </div>
@@ -296,11 +303,14 @@ export default function Checkout() {
                 </div>
 
                 <div className="px-5 pb-5">
-                  <button type="submit" disabled={loading || createOrder.isPending}
+                  {hasInventoryIssue && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium leading-snug text-red-600">Hay productos sin existencias suficientes. Ajusta la cantidad en tu carrito para continuar.</p>}
+                  <button type={"submit"} disabled={loading || createOrder.isPending || hasInventoryIssue}
                     className="flex w-full items-center justify-center gap-2 bg-black py-4 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#343434] disabled:opacity-60">
                     {loading || createOrder.isPending
                       ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Procesando...</>
-                      : <><Lock size={15} /> Finalizar compra · {fmt(orderTotal)}</>
+                      : hasInventoryIssue
+                        ? <><Lock size={15} /> Ajusta el inventario del carrito</>
+                        : <><Lock size={15} /> Finalizar compra · {fmt(orderTotal)}</>
                     }
                   </button>
                   <div className="mt-4 flex items-center justify-center gap-4">

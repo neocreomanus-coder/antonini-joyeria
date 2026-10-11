@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { nanoid } from "nanoid";
+import { toast } from "sonner";
 
 export type CartItemFull = {
   id: number;
@@ -13,10 +14,12 @@ export type CartItemFull = {
   productMaterial: string | null;
   productReference: string | null;
   productBasePrice: string | null;
+  productStock: number | null;
   productImageUrls: string[] | null;
   variantType: string | null;
   variantValue: string | null;
   variantPriceModifier: string | null;
+  variantStock: number | null;
 };
 
 type CartContextType = {
@@ -54,7 +57,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const { data: items = [], refetch } = trpc.cart.get.useQuery(
     { sessionId: user ? undefined : sessionId },
-    { refetchOnWindowFocus: false }
+    { refetchOnWindowFocus: true, refetchInterval: 20_000 }
   );
   const { data: popupConfig } = trpc.siteConfig.getPopup.useQuery(undefined, { refetchOnWindowFocus: false });
 
@@ -69,7 +72,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateQuantity = async (id: number, quantity: number) => {
-    await updateMutation.mutateAsync({ id, quantity });
+    try {
+      await updateMutation.mutateAsync({ id, quantity, sessionId: user ? undefined : sessionId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No fue posible actualizar la cantidad");
+      await refetch();
+    }
   };
 
   const removeItem = async (id: number) => {

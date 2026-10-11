@@ -1,140 +1,94 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { INVENTORY_ENFORCED } from "@/lib/inventorySettings";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useCart } from "@/contexts/CartContext";
 import { getNextCarouselIndex } from "@/lib/promoCarousel";
 import { getDisplayProductPrice, getPopupOfferForProduct } from "@/lib/productPricing";
-import { getAssignedJewelryProducts, getAssignedTrendingProducts } from "@/lib/homeSectionFilters";
+import { getAssignedItalianSilverProducts, getAssignedJewelryProducts, getAssignedTrendingProducts } from "@/lib/homeSectionFilters";
 import { getHomeProductCarouselOffset } from "@/lib/homeProductCarousel";
 import { getRenderableTestimonials, getTestimonialWindow } from "@/lib/testimonialCarousel";
-import { ShoppingBag, Star, ChevronLeft, ChevronRight, Shield, Truck, Award, Gem, Check, Sparkles, X, Pause, Play } from "lucide-react";
+import { ShoppingBag, Star, ChevronLeft, ChevronRight, Truck, Award, Gem, Check, X } from "lucide-react";
+import { toast } from "sonner";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
-// ─── Hero Section con Carrusel ─────────────────────────────────────────────────
+// ─── Hero Section — video exclusivo ────────────────────────────────────────────
 function HeroSection() {
   const { data: heroConfig } = trpc.siteConfig.getHero.useQuery();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoError, setVideoError] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
-  const [isPaused, setIsPaused] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const touchStartX = useRef<number | null>(null);
-  const fallbackImage = heroConfig?.fallbackImage ?? "/manus-storage/hero-antonini-modelo_c203840d.jpg";
-  const slides = heroConfig?.slides?.length ? heroConfig.slides : [{ id: "fallback", mediaUrl: fallbackImage, mediaType: "image" as const }];
-  const activeSlide = slides[activeIndex % slides.length];
-  const showVideo = activeSlide?.mediaType === "video" && !videoError;
+  const [videoReady, setVideoReady] = useState(false);
+  const videoSlide = heroConfig?.slides?.find(slide => slide.mediaType === "video" && Boolean(slide.mediaUrl));
 
   useEffect(() => {
-    setActiveIndex(0);
-    if (slides.length < 2) return;
-    const timer = window.setInterval(() => setActiveIndex(current => getNextCarouselIndex(current, slides.length)), heroConfig?.intervalMs ?? 6500);
-    return () => window.clearInterval(timer);
-  }, [slides.length, heroConfig?.intervalMs]);
+    setVideoReady(false);
+  }, [videoSlide?.id, videoSlide?.mediaUrl]);
 
   useEffect(() => {
-    setVideoError(false);
-    setIsPaused(false);
-  }, [activeIndex]);
+    if (!videoSlide?.mediaUrl) return;
+    const existingPreload = document.querySelector<HTMLLinkElement>('link[data-antonini-hero-video]');
+    if (existingPreload?.href === new URL(videoSlide.mediaUrl, window.location.origin).href) return;
 
-  const showSlide = (index: number) => setActiveIndex((index + slides.length) % slides.length);
+    existingPreload?.remove();
+    const preload = document.createElement("link");
+    preload.rel = "preload";
+    preload.as = "video";
+    preload.href = videoSlide.mediaUrl;
+    preload.setAttribute("data-antonini-hero-video", "true");
+    preload.setAttribute("fetchpriority", "high");
+    document.head.appendChild(preload);
 
-  const toggleMute = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !videoRef.current.muted;
-      setIsMuted(videoRef.current.muted);
-    }
-  };
+    return () => preload.remove();
+  }, [videoSlide?.mediaUrl]);
 
-  const togglePlay = () => {
-    if (videoRef.current) {
-      if (videoRef.current.paused) { videoRef.current.play(); setIsPaused(false); }
-      else { videoRef.current.pause(); setIsPaused(true); }
-    }
+  const startPlayback = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    void video.play().catch(() => {
+      // El video permanece invisible hasta que el navegador permita reproducirlo.
+    });
   };
 
   return (
     <section
-      className="relative w-full overflow-hidden bg-gray-900"
+      className="relative w-full overflow-hidden bg-white"
       style={{ height: "100svh", minHeight: "500px" }}
-      onTouchStart={(event) => { touchStartX.current = event.touches[0]?.clientX ?? null; }}
-      onTouchEnd={(event) => {
-        const start = touchStartX.current;
-        const end = event.changedTouches[0]?.clientX;
-        if (start !== null && end !== undefined && Math.abs(end - start) > 45 && slides.length > 1) showSlide(end < start ? activeIndex + 1 : activeIndex - 1);
-        touchStartX.current = null;
-      }}
+      aria-label="Video principal de Antonini Joyería"
     >
-      {/* ── Video o imagen de fondo — ocupa exactamente 100vh ── */}
-      {showVideo ? (
+      {!videoSlide && (
+        <img
+          src={heroConfig?.fallbackImage || heroConfig?.slides?.find(slide => slide.mediaType === "image")?.mediaUrl || "/manus-storage/hero-antonini-modelo_c203840d.jpg"}
+          alt="Antonini Joyería"
+          className="absolute inset-0 h-full w-full object-cover object-center"
+        />
+      )}
+      {videoSlide && (
         <video
           ref={videoRef}
-          key={activeSlide.id}
-          src={activeSlide.mediaUrl}
+          key={videoSlide.id}
+          src={videoSlide.mediaUrl}
           autoPlay
           loop
           muted
           playsInline
           preload="auto"
-          onError={() => setVideoError(true)}
-          className="absolute inset-0 w-full h-full object-cover object-center"
-        />
-      ) : (
-        <img
-          key={activeSlide.id}
-          src={activeSlide?.mediaUrl ?? fallbackImage}
-          alt="Antonini Joyería"
-          className="absolute inset-0 w-full h-full object-cover object-center"
+          onCanPlay={startPlayback}
+          onLoadedData={() => {
+            startPlayback();
+            setVideoReady(true);
+          }}
+          onPlaying={() => setVideoReady(true)}
+          className={`absolute inset-0 h-full w-full object-cover object-center ${videoReady ? "opacity-100" : "opacity-0"}`}
         />
       )}
-
-      {/* ── Overlay — gradiente inferior para legibilidad del texto ── */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-black/30" />
-
-      {slides.length > 1 && (
-        <>
-          <button type="button" onClick={() => showSlide(activeIndex - 1)} aria-label="Diapositiva anterior" className="absolute left-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center border border-white/60 bg-black/35 text-white backdrop-blur-sm transition-colors hover:bg-black/60 md:flex"><ChevronLeft size={22} /></button>
-          <button type="button" onClick={() => showSlide(activeIndex + 1)} aria-label="Siguiente diapositiva" className="absolute right-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center border border-white/60 bg-black/35 text-white backdrop-blur-sm transition-colors hover:bg-black/60 md:flex"><ChevronRight size={22} /></button>
-        </>
-      )}
-
-      {/* ── Contenido — esquina inferior izquierda como Pandora ── */}
-      <div className="absolute inset-0 z-10 flex flex-col justify-end pb-14 md:pb-16">
+      <div className="absolute inset-0 z-10 flex items-end pb-14 md:pb-16">
         <div className="container">
-          {/* Botón CTA — estilo Pandora: fondo oscuro semitransparente, texto blanco, sin bordes redondeados */}
-          <Link href="/catalogo"
-            className="inline-flex items-center bg-black/80 text-white px-7 py-3.5 font-semibold text-sm tracking-widest uppercase hover:bg-black transition-colors shadow-lg active:scale-95"
-            style={{ letterSpacing: "0.12em" }}>
+          <Link href="/catalogo" className="inline-flex items-center bg-black/80 px-7 py-3.5 text-sm font-semibold uppercase tracking-widest text-white shadow-lg hover:bg-black">
             COMPRAR AHORA
           </Link>
         </div>
       </div>
-
-      {/* ── Indicadores y controles — esquina inferior derecha ── */}
-      <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2 md:bottom-5 md:right-6">
-          {slides.length > 1 && <div className="flex items-center gap-1" aria-label="Indicador de diapositivas">
-            {slides.map((slide, index) => <button key={slide.id} type="button" onClick={() => showSlide(index)} aria-label={`Mostrar diapositiva ${index + 1}`} aria-current={index === activeIndex ? "true" : undefined} className={`h-1.5 w-1.5 rounded-full p-0 transition-all ${index === activeIndex ? "scale-110 bg-white shadow-[0_0_4px_rgba(255,255,255,0.9)]" : "bg-white/45 hover:bg-white/80"}`} style={{ minHeight: "auto", minWidth: "auto" }} />)}
-          </div>}
-          {showVideo && (
-            <>
-          <button onClick={togglePlay} aria-label={isPaused ? "Reproducir" : "Pausar"}
-            className="w-9 h-9 bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors backdrop-blur-sm"
-            style={{ minHeight: "auto" }}>
-            {isPaused ? <Play size={14} fill="currentColor" aria-hidden="true" /> : <Pause size={14} fill="currentColor" aria-hidden="true" />}
-          </button>
-          <button onClick={toggleMute} aria-label={isMuted ? "Activar sonido" : "Silenciar"}
-            className="w-9 h-9 bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors backdrop-blur-sm"
-            style={{ minHeight: "auto" }}>
-            {isMuted ? (
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
-            ) : (
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
-            )}
-          </button>
-            </>
-          )}
-      </div>
-
     </section>
   );
 }
@@ -204,15 +158,26 @@ function ProductCard({ product, onAddSuccess }: { product: any; onAddSuccess?: (
   const compareAtPrice = popupDiscountPercent > 0 ? Math.max(configuredOriginalPrice, regularPrice) : configuredOriginalPrice;
   const { discountedPrice: displayedPrice, hasDiscount } = getDisplayProductPrice(price, compareAtPrice, 0);
   const displayedOriginalPrice = compareAtPrice > displayedPrice ? compareAtPrice : 0;
-  const productGender = product.gender === "masculino" ? "Masculino" : product.gender === "femenino" ? "Femenino" : product.gender === "unisex" ? "Unisex" : product.gender === "ninos" ? "Niños" : "";
+  const productGender = [
+    product.perfumeryStyle === "arabe" ? "Árabe" : "",
+    product.gender === "masculino" ? "Masculino" : product.gender === "femenino" ? "Femenino" : product.gender === "unisex" ? "Unisex" : product.gender === "ninos" ? "Niños" : "",
+  ].filter(Boolean).join(" · ");
+  const outOfStock = INVENTORY_ENFORCED && Number(product.stock ?? 0) <= 0;
+  const requiresVariant = Array.isArray(product.variants) && product.variants.some((variant: any) => variant.type === "size" || variant.type === "length");
 
   const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (outOfStock || requiresVariant) return;
     setAdding(true);
-    await addItem(product.id, undefined, 1);
-    onAddSuccess?.(product.name, imgs[0] ?? "");
-    setTimeout(() => setAdding(false), 800);
+    try {
+      await addItem(product.id, undefined, 1);
+      onAddSuccess?.(product.name, imgs[0] ?? "");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No fue posible agregar el producto");
+    } finally {
+      setTimeout(() => setAdding(false), 800);
+    }
   };
 
   return (
@@ -228,9 +193,10 @@ function ProductCard({ product, onAddSuccess }: { product: any; onAddSuccess?: (
             {popupDiscountPercent > 0 ? `${popupDiscountPercent}% OFF` : "OFERTA"}
           </div>
         )}
-        <button onClick={handleAdd}
-          className="absolute bottom-3 right-3 bg-brand-green text-white p-2.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 hover:bg-brand-green-light active:scale-95"
-          aria-label="Agregar al carrito">
+        {outOfStock && <span className="absolute left-2 top-2 rounded-full bg-gray-950 px-2 py-0.5 text-[10px] font-bold text-white">AGOTADO</span>}
+        <button onClick={handleAdd} disabled={outOfStock || requiresVariant}
+          className="absolute bottom-3 right-3 bg-brand-green text-white p-2.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 hover:bg-brand-green-light active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300"
+          aria-label={outOfStock ? "Producto agotado" : requiresVariant ? "Selecciona una variante en la ficha" : "Agregar al carrito"}>
           {adding
             ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin block" />
             : <ShoppingBag size={16} />}
@@ -430,6 +396,7 @@ export default function Home() {
   const { data: trendingProducts = [] } = trpc.products.byHomeSection.useQuery({ section: "trending", limit: 8 });
   const { data: under300kProducts = [] } = trpc.products.byHomeSection.useQuery({ section: "under300k", limit: 8 });
   const { data: under800kProducts = [] } = trpc.products.byHomeSection.useQuery({ section: "under800k", limit: 8 });
+  const { data: italianSilverProducts = [] } = trpc.products.byHomeSection.useQuery({ section: "silver925", limit: 8 });
   const { data: deliveryConfig } = trpc.siteConfig.getDeliveryPhotos.useQuery();
   const [popup, setPopup] = useState({ visible: false, name: "", img: "" });
   const deliveryPhotos = deliveryConfig?.photos ?? DEFAULT_DELIVERY_PHOTOS;
@@ -441,6 +408,7 @@ export default function Home() {
   };
   const under300k = getAssignedJewelryProducts(under300kProducts, "under300k").slice(0, 8);
   const under800k = getAssignedJewelryProducts(under800kProducts, "under800k").slice(0, 8);
+  const italianSilver = getAssignedItalianSilverProducts(italianSilverProducts).slice(0, 8);
   const trending = getAssignedTrendingProducts(trendingProducts).slice(0, 8);
 
   const handleAddSuccess = (name: string, img: string) => {
@@ -546,7 +514,24 @@ export default function Home() {
         </section>
       )}
 
-      {/* ── 3. CATEGORÍAS DE PRODUCTOS ── */}
+      {/* ── 3. PLATA ITALIANA LEY 925 ── */}
+      {italianSilver.length > 0 && (
+        <section className="border-y border-slate-100 bg-slate-50 py-12">
+          <div className="container">
+            <div className="mb-6 flex items-end justify-between">
+              <div>
+                <p className="mb-1 text-xs font-bold uppercase tracking-widest text-slate-500">Elegancia en plata</p>
+                <h2 className="font-sans text-2xl font-bold text-gray-900 md:text-3xl">Plata Italiana Ley 925</h2>
+                <div className="mt-2 h-0.5 w-12 rounded-full bg-[linear-gradient(90deg,#ffffff_0%,#94a3b8_45%,#f8fafc_100%)]" />
+              </div>
+              <Link href="/catalogo" className="text-xs font-bold uppercase tracking-wide text-brand-green hover:underline">Ver todos →</Link>
+            </div>
+            <HomeProductCarousel products={italianSilver} onAddSuccess={handleAddSuccess} />
+          </div>
+        </section>
+      )}
+
+      {/* ── 4. CATEGORÍAS DE PRODUCTOS ── */}
       <section className="bg-white">
         {[
           { title: "Cadenas", slug: "cadenas" },
@@ -560,8 +545,6 @@ export default function Home() {
           <CategorySection key={slug} title={title} products={byCategory(slug)} viewAllSlug={slug} onAddSuccess={handleAddSuccess} />
         ))}
       </section>
-
-      <PromoCarousel />
 
       {/* ── 4. EN TENDENCIA AHORA ── */}
       {trending.length > 0 && (
@@ -655,6 +638,7 @@ export default function Home() {
         </div>
       </section>
 
+      <PromoCarousel />
       <Footer />
 
       {/* ── WHATSAPP FLOATING BUTTON ── */}

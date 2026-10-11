@@ -41,6 +41,7 @@ const productsRouter = router({
     categoryId: z.number().optional(),
     search: z.string().optional(),
     gender: z.enum(["masculino", "femenino", "unisex", "ninos"]).optional(),
+    perfumeryStyle: z.enum(["arabe"]).optional(),
     limit: z.number().optional(),
     offset: z.number().optional(),
   }).optional()).query(({ input }) => db.getProducts(input)),
@@ -82,14 +83,17 @@ const productsRouter = router({
   create: adminProcedure.input(z.object({
     name: z.string().min(1), slug: z.string().min(1),
     description: z.string().optional(), material: z.string().optional(), materials: z.array(z.string()).optional(),
+    customStoneName: z.string().trim().min(1).max(100).nullable().optional(), customStoneColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
     basePrice: z.string(), originalPrice: z.string().nullable().optional(), reference: z.string().trim().max(100).nullable().optional(), categoryId: z.number(),
-    featured: z.boolean().optional(), imageUrls: z.array(z.string()).optional(), stock: z.number().optional(),
+    featured: z.boolean().optional(), imageUrls: z.array(z.string()).optional(), stock: z.number().int().min(0).optional(),
     homeSection: z.string().optional(),
     volumeMl: z.number().optional(),
     gender: z.enum(["masculino", "femenino", "unisex", "ninos"]).optional(),
+    perfumeryStyle: z.enum(["arabe"]).nullable().optional(),
     variants: z.array(z.object({
+      id: z.number().optional(),
       type: z.enum(["size", "length", "color"]),
-      value: z.string(), priceModifier: z.string().optional(), stock: z.number().optional(),
+      value: z.string(), priceModifier: z.string().optional(), stock: z.number().int().min(0).optional(),
     })).optional(),
   })).mutation(async ({ input }) => {
     const { variants, ...productData } = input;
@@ -105,15 +109,18 @@ const productsRouter = router({
     id: z.number(),
     name: z.string().optional(), slug: z.string().optional(),
     description: z.string().optional(), material: z.string().optional(), materials: z.array(z.string()).optional(),
+    customStoneName: z.string().trim().min(1).max(100).nullable().optional(), customStoneColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).nullable().optional(),
     basePrice: z.string().optional(), originalPrice: z.string().nullable().optional(), reference: z.string().trim().max(100).nullable().optional(), categoryId: z.number().optional(),
     active: z.boolean().optional(), featured: z.boolean().optional(),
     homeSection: z.string().optional(),
     volumeMl: z.number().optional(),
     gender: z.enum(["masculino", "femenino", "unisex", "ninos"]).optional(),
-    imageUrls: z.array(z.string()).optional(), stock: z.number().optional(),
+    perfumeryStyle: z.enum(["arabe"]).nullable().optional(),
+    imageUrls: z.array(z.string()).optional(), stock: z.number().int().min(0).optional(),
     variants: z.array(z.object({
+      id: z.number().optional(),
       type: z.enum(["size", "length", "color"]),
-      value: z.string(), priceModifier: z.string().optional(), stock: z.number().optional(),
+      value: z.string(), priceModifier: z.string().optional(), stock: z.number().int().min(0).optional(),
     })).optional(),
   })).mutation(async ({ input }) => {
     const { id, variants, ...data } = input;
@@ -149,13 +156,28 @@ const cartRouter = router({
   add: publicProcedure.input(z.object({
     productId: z.number(), variantId: z.number().optional(),
     quantity: z.number().min(1).default(1), sessionId: z.string().optional(),
-  })).mutation(({ ctx, input }) => {
+  })).mutation(async ({ ctx, input }) => {
     const userId = ctx.user?.id;
-    return db.addCartItem({ userId, sessionId: input.sessionId, productId: input.productId, variantId: input.variantId, quantity: input.quantity });
+    if (!userId && !input.sessionId) throw new TRPCError({ code: "BAD_REQUEST", message: "La sesión del carrito no es válida" });
+    try {
+      return await db.addCartItem({ userId, sessionId: input.sessionId, productId: input.productId, variantId: input.variantId, quantity: input.quantity });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No fue posible actualizar el inventario";
+      throw new TRPCError({ code: "BAD_REQUEST", message });
+    }
   }),
 
-  updateQuantity: publicProcedure.input(z.object({ id: z.number(), quantity: z.number().min(0) }))
-    .mutation(({ input }) => db.updateCartItemQuantity(input.id, input.quantity)),
+  updateQuantity: publicProcedure.input(z.object({ id: z.number(), quantity: z.number().min(0), sessionId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user?.id;
+      if (!userId && !input.sessionId) throw new TRPCError({ code: "BAD_REQUEST", message: "La sesión del carrito no es válida" });
+      try {
+        return await db.updateCartItemQuantity({ ...input, userId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No fue posible actualizar el inventario";
+        throw new TRPCError({ code: "BAD_REQUEST", message });
+      }
+    }),
 
   remove: publicProcedure.input(z.object({ id: z.number() }))
     .mutation(({ input }) => db.removeCartItem(input.id)),
@@ -229,12 +251,18 @@ const ordersRouter = router({
       throw new TRPCError({ code: "BAD_REQUEST", message });
     }
     const verifiedItems = input.items.map((item, index) => ({ ...item, unitPrice: pricing.unitPrices[index] ?? item.unitPrice }));
-    const createdOrder = await db.createOrder({
-      ...input,
-      ...pricing,
-      items: verifiedItems,
-      userId,
-    });
+    let createdOrder: { id: number; publicToken: string; orderNumber: string };
+    try {
+      createdOrder = await db.createOrder({
+        ...input,
+        ...pricing,
+        items: verifiedItems,
+        userId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No fue posible reservar el inventario";
+      throw new TRPCError({ code: "BAD_REQUEST", message });
+    }
     void notifyTelegramAboutOrder({
       orderId: createdOrder.id,
       orderNumber: createdOrder.orderNumber,
@@ -311,7 +339,7 @@ const ordersRouter = router({
   updateShipment: adminProcedure.input(z.object({
     id: z.number(),
     status: z.enum(["pendiente", "despachado", "entregado"]),
-    shippingCarrier: z.enum(["coordinadora", "interrapidisimo"]),
+    shippingCarrier: z.enum(["coordinadora", "interrapidisimo", "dhl"]),
     interrapidisimoGuide: z.string().max(100).optional().nullable(),
   })).mutation(({ input }) => db.updateOrderShipment(input.id, input)),
 
@@ -372,8 +400,8 @@ const siteConfigRouter = router({
       slides: z.array(z.object({
         id: z.string().min(1).max(100),
         mediaUrl: z.string().min(1).max(1000),
-        mediaType: z.enum(["image", "video"]),
-      })).min(1).max(8),
+        mediaType: z.literal("video"),
+      })).length(1),
     }))
     .mutation(({ input }) => db.updateHeroCarouselConfig(input)),
 

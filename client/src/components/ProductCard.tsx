@@ -1,3 +1,4 @@
+import { INVENTORY_ENFORCED } from "@/lib/inventorySettings";
 import { useState } from "react";
 import { Link } from "wouter";
 import { ShoppingBag, Gem } from "lucide-react";
@@ -11,12 +12,17 @@ type Props = {
   name: string;
   slug: string;
   material?: string | null;
+  customStoneName?: string | null;
+  customStoneColor?: string | null;
   basePrice: string;
   originalPrice?: string | number | null;
   imageUrls?: string[] | null;
   categoryName?: string | null;
   volumeMl?: number | null;
   gender?: "masculino" | "femenino" | "unisex" | "ninos" | null;
+  perfumeryStyle?: "arabe" | null;
+  stock?: number | null;
+  variants?: Array<{ id: number; type: string; stock: number | null }>;
 };
 
 function fmt(n: string | number) {
@@ -30,7 +36,7 @@ const GENDER_LABELS = {
   ninos: "Niños",
 } as const;
 
-export default function ProductCard({ id, name, slug, material, basePrice, originalPrice, imageUrls, volumeMl, gender }: Props) {
+export default function ProductCard({ id, name, slug, material, customStoneName, customStoneColor, basePrice, originalPrice, imageUrls, volumeMl, gender, perfumeryStyle, stock, variants }: Props) {
   const { addItem } = useCart();
   const { data: popupConfig } = trpc.siteConfig.getPopup.useQuery(undefined, { refetchOnWindowFocus: false });
   const [adding, setAdding] = useState(false);
@@ -40,15 +46,21 @@ export default function ProductCard({ id, name, slug, material, basePrice, origi
   const configuredOriginalPrice = Number(originalPrice ?? 0);
   const compareAtPrice = popupDiscountPercent > 0 ? Math.max(configuredOriginalPrice, regularPrice) : configuredOriginalPrice;
   const hasDiscount = compareAtPrice > price;
-  const materialLabel = getMaterialOption(material).label;
-  const productSegment = gender ? GENDER_LABELS[gender] : null;
+  const materialLabel = [getMaterialOption(material).label, customStoneName].filter(Boolean).join(" · ");
+  const productSegment = [perfumeryStyle === "arabe" ? "Árabe" : null, gender ? GENDER_LABELS[gender] : null].filter(Boolean).join(" · ") || null;
+  const outOfStock = INVENTORY_ENFORCED && Number(stock ?? 0) <= 0;
+  const requiresVariant = Boolean(variants?.some((variant) => variant.type === "size" || variant.type === "length"));
 
   const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (outOfStock || requiresVariant) return;
     setAdding(true);
-    await addItem(id, undefined, 1);
-    setTimeout(() => setAdding(false), 800);
+    try {
+      await addItem(id, undefined, 1);
+    } finally {
+      setTimeout(() => setAdding(false), 800);
+    }
   };
 
   return (
@@ -61,9 +73,10 @@ export default function ProductCard({ id, name, slug, material, basePrice, origi
             <Gem size={40} />
           </div>
         )}
-        <button onClick={handleAdd}
-          className="absolute bottom-3 right-3 bg-brand-green text-white p-2.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 hover:bg-brand-green-light"
-          aria-label="Agregar al carrito">
+        {outOfStock && <span className="absolute left-3 top-3 rounded-full bg-gray-950 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">Agotado</span>}
+        <button onClick={handleAdd} disabled={outOfStock || requiresVariant}
+          className="absolute bottom-3 right-3 bg-brand-green text-white p-2.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200 hover:bg-brand-green-light disabled:cursor-not-allowed disabled:bg-gray-300"
+          aria-label={outOfStock ? "Producto agotado" : requiresVariant ? "Selecciona una variante en la ficha" : "Agregar al carrito"}>
           {adding
             ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin block" />
             : <ShoppingBag size={16} />}
@@ -71,6 +84,7 @@ export default function ProductCard({ id, name, slug, material, basePrice, origi
       </div>
       <div className="p-4">
         <p className="mb-1 text-xs font-bold leading-tight tracking-[0.08em] uppercase text-brand-gold">
+          {customStoneName && <span className="mr-1.5 inline-block h-2 w-2 rounded-full border border-black/10 align-middle" style={{ backgroundColor: customStoneColor ?? "#7c3aed" }} />}
           {materialLabel}{productSegment ? ` · ${productSegment}` : ""}{volumeMl ? ` · ${volumeMl} ml` : ""}
         </p>
         <p className="text-[17px] font-bold text-gray-950 leading-snug line-clamp-2 font-sans">{name}</p>

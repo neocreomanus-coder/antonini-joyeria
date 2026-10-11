@@ -16,6 +16,16 @@ describe("garantía por material", () => {
     expect(getProductGuarantee(["MOISSANITAS"])).toBe("Piedra Garantizada");
   });
 
+  it("muestra Piedra Garantizada para las nuevas gemas", () => {
+    ["RUBÍ", "DIAMANTES", "DIAMANTE NEGRO", "DIAMANTE AZUL", "DIAMANTE AMARILLO", "ÓPALO", "CIRCÓN SUIZO", "AMATISTA", "ZAFIRO"].forEach((material) => {
+      expect(getProductGuarantee([material])).toBe("Piedra Garantizada");
+    });
+  });
+
+  it("muestra Piedra Garantizada para una piedra manual", () => {
+    expect(getProductGuarantee(["PIEDRA PERSONALIZADA"])).toBe("Piedra Garantizada");
+  });
+
   it("muestra Metal Garantizado para Oro Blanco, Oro Rosa y Plata Italiana", () => {
     expect(getProductGuarantee(["ORO BLANCO"])).toBe("Metal Garantizado");
     expect(getProductGuarantee(["ORO ROSA"])).toBe("Metal Garantizado");

@@ -1,3 +1,4 @@
+import { INVENTORY_ENFORCED } from "@/lib/inventorySettings";
 import { useEffect, useRef, useState } from "react";
 import { useRoute, Link } from "wouter";
 import { trpc } from "@/lib/trpc";
@@ -58,15 +59,28 @@ export default function Producto() {
 
   const handleAddToCart = async () => {
     if (!product) return;
-    const sizeVariants = product.variants?.filter(v => v.type === "size" || v.type === "length") ?? [];
-    if (sizeVariants.length > 0 && !selectedVariant) {
+    const selectableVariants = product.variants?.filter(v => v.type === "size" || v.type === "length") ?? [];
+    const chosenVariant = product.variants?.find(v => v.id === selectedVariant);
+    const available = chosenVariant
+      ? Math.min(Number(product.stock ?? 0), Number(chosenVariant.stock ?? 0))
+      : Number(product.stock ?? 0);
+    if (selectableVariants.length > 0 && !selectedVariant) {
       toast.error("Por favor selecciona una talla o largo");
       return;
     }
+    if (INVENTORY_ENFORCED && available <= 0) {
+      toast.error("Este producto ya no tiene existencias disponibles");
+      return;
+    }
     setAdding(true);
-    await addItem(product.id, selectedVariant);
-    setAdding(false);
-    toast.success("Producto agregado al carrito");
+    try {
+      await addItem(product.id, selectedVariant);
+      toast.success("Producto agregado al carrito");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No fue posible agregar el producto");
+    } finally {
+      setAdding(false);
+    }
   };
 
   if (isLoading) return (
@@ -109,6 +123,11 @@ export default function Producto() {
   const { discountedPrice, compareAtPrice, hasDiscount } = getDisplayProductPrice(popupOfferPrice, popupCompareAtPrice, 0);
   const sizeVariants = product.variants?.filter(v => v.type === "size") ?? [];
   const lengthVariants = product.variants?.filter(v => v.type === "length") ?? [];
+  const requiresVariant = sizeVariants.length > 0 || lengthVariants.length > 0;
+  const availableStock = selectedVariantData
+    ? Math.min(Number(product.stock ?? 0), Number(selectedVariantData.stock ?? 0))
+    : Number(product.stock ?? 0);
+  const outOfStock = INVENTORY_ENFORCED && availableStock <= 0;
   const selectedOption = selectedVariantData
     ? `${selectedVariantData.type === "size" ? "talla" : "largo"} ${selectedVariantData.value}`
     : undefined;
@@ -119,8 +138,18 @@ export default function Producto() {
     selectedOption,
   });
   const materials = product.materials?.length ? product.materials : [product.material ?? "ORO 18K NACIONAL"];
-  const materialOptions = materials.map((value) => getMaterialOption(value));
-  const trustItems = getProductTrustMessages(materials, product.categorySlug).map((item) => ({
+  const materialOptions = [
+    ...materials.map((value) => getMaterialOption(value)),
+    ...(product.customStoneName ? [{
+      ...getMaterialOption(product.customStoneName),
+      value: `CUSTOM-STONE-${product.id}`,
+      label: product.customStoneName,
+      detail: "Piedra personalizada",
+      customColor: product.customStoneColor ?? "#7c3aed",
+    }] : []),
+  ];
+  const trustMaterials = product.customStoneName ? [...materials, "PIEDRA PERSONALIZADA"] : materials;
+  const trustItems = getProductTrustMessages(trustMaterials, product.categorySlug).map((item) => ({
     ...item,
     icon: item.id === "free-shipping" || item.id === "cash-on-delivery"
       ? Truck
@@ -254,7 +283,7 @@ export default function Producto() {
               <div className="mb-3 flex flex-wrap gap-2" aria-label="Materiales disponibles">
                 {materialOptions.map((option) => (
                   <span key={option.value} className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-brand-green">
-                    <span className={`block h-3 w-3 rounded-full border border-black/10 ${option.swatchClass}`} />
+                    <span className={`block h-3 w-3 rounded-full border border-black/10 ${option.swatchClass}`} style={"customColor" in option ? { backgroundColor: option.customColor } : undefined} />
                     {option.label}
                   </span>
                 ))}
@@ -275,12 +304,12 @@ export default function Producto() {
                   <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-800">Talla</p>
                   <div className="flex flex-wrap gap-2">
                     {sizeVariants.map(v => (
-                      <button key={v.id} onClick={() => setSelectedVariant(v.id)}
+                      <button key={v.id} onClick={() => setSelectedVariant(v.id)} disabled={INVENTORY_ENFORCED && (Number(product.stock ?? 0) <= 0 || Number(v.stock ?? 0) <= 0)}
                         className={`min-w-12 border px-4 py-2.5 text-sm font-semibold transition-colors ${
                           selectedVariant === v.id
                             ? "border-gray-950 bg-gray-950 text-white"
                             : "border-gray-300 bg-white text-gray-800 hover:border-gray-950"
-                        }`}>
+                        } disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400`}>
                         {v.value}
                         {parseFloat(v.priceModifier ?? "0") > 0 && <span className="ml-1 text-xs opacity-70">+{formatPrice(parseFloat(v.priceModifier ?? "0"))}</span>}
                       </button>
@@ -295,12 +324,12 @@ export default function Producto() {
                   <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-800">Largo</p>
                   <div className="flex flex-wrap gap-2">
                     {lengthVariants.map(v => (
-                      <button key={v.id} onClick={() => setSelectedVariant(v.id)}
+                      <button key={v.id} onClick={() => setSelectedVariant(v.id)} disabled={INVENTORY_ENFORCED && (Number(product.stock ?? 0) <= 0 || Number(v.stock ?? 0) <= 0)}
                         className={`min-w-14 border px-4 py-2.5 text-sm font-semibold transition-colors ${
                           selectedVariant === v.id
                             ? "border-gray-950 bg-gray-950 text-white"
                             : "border-gray-300 bg-white text-gray-800 hover:border-gray-950"
-                        }`}>
+                        } disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400`}>
                         {v.value}
                       </button>
                     ))}
@@ -309,12 +338,19 @@ export default function Producto() {
               )}
 
               <div className={`${sizeVariants.length > 0 || lengthVariants.length > 0 ? "mt-8" : "mt-7"}`}>
-              <Button onClick={handleAddToCart} disabled={adding} size="lg"
+              {INVENTORY_ENFORCED && <p className={`mb-3 text-xs font-semibold ${outOfStock ? "text-red-600" : "text-gray-600"}`}>
+                {outOfStock
+                  ? "Agotado"
+                  : requiresVariant && !selectedVariant
+                    ? "Selecciona una opción para ver la disponibilidad"
+                    : `${availableStock} disponible${availableStock === 1 ? "" : "s"}`}
+              </p>}
+              <Button onClick={handleAddToCart} disabled={adding || outOfStock || (requiresVariant && !selectedVariant)} size="lg"
                 className="h-14 w-full rounded-none bg-gray-950 text-[12px] font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-brand-green">
                 <ShoppingBag className="mr-2 h-[18px] w-[18px]" />
-                {adding ? "Agregando..." : "Compra con descuento"}
+                {adding ? "Agregando..." : outOfStock ? "Producto agotado" : "Compra con descuento"}
               </Button>
-              <a
+              {!outOfStock && (!requiresVariant || selectedVariant) ? <a
                 href={whatsappPurchaseUrl}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -322,7 +358,10 @@ export default function Producto() {
               >
                 <WhatsAppLogo className="h-5 w-5" />
                 Comprar por WhatsApp · Envío gratis
-              </a>
+              </a> : <div className="mt-3 flex h-14 w-full items-center justify-center gap-2 bg-gray-100 px-4 text-[12px] font-bold uppercase tracking-[0.055em] text-gray-400">
+                <ShoppingBag className="h-5 w-5" />
+                No disponible para compra
+              </div>}
               </div>
 
               {/* Guarantees */}

@@ -23,7 +23,7 @@ export default function AdminOrders() {
 
   const handleDelete = (order: any) => {
     const orderNumber = formatOrderNumber(order.orderNumber ?? order.id);
-    if (window.confirm(`¿Eliminar definitivamente el pedido ${orderNumber}? Esta acción no se puede deshacer.`)) deleteOrder.mutate({ id: order.id });
+    if (window.confirm(`¿Eliminar definitivamente el pedido ${orderNumber}? Esta acción no se puede deshacer y devolverá sus unidades al inventario.`)) deleteOrder.mutate({ id: order.id });
   };
 
   const filtered = orders.filter((o: any) => {

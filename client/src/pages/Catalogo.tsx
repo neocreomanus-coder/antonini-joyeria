@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import Header from "@/components/Header";
@@ -7,9 +7,11 @@ import ProductCard from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, SlidersHorizontal } from "lucide-react";
-import { getProductSubcategories, getSubcategoryTitle } from "@/lib/productSubcategories";
+import { getProductSubcategories, PERFUMERY_STYLES } from "@/lib/productSubcategories";
 import { getPublicCategory, isPerfumeryCategory, JEWELRY_CATEGORIES, PERFUMERY_CATEGORY } from "@/lib/productTaxonomy";
 import { isJewelryProduct } from "@/lib/homeSectionFilters";
+import { shuffleCatalogProducts } from "@/lib/catalogShuffle";
+import { JEWELRY_MATERIAL_FILTERS, matchesJewelryMaterialFilter, type JewelryMaterialFilter } from "@/lib/catalogMaterialFilters";
 
 export default function Catalogo() {
   const [, params] = useRoute("/catalogo/:categoria");
@@ -21,8 +23,11 @@ export default function Catalogo() {
   const [search, setSearch] = useState(initialSearch);
   const [searchInput, setSearchInput] = useState(initialSearch);
   const [selectedGender, setSelectedGender] = useState<"" | "masculino" | "femenino" | "unisex" | "ninos">("");
+  const [selectedPerfumeryStyle, setSelectedPerfumeryStyle] = useState<"" | "arabe">("");
+  const [selectedJewelryMaterial, setSelectedJewelryMaterial] = useState<JewelryMaterialFilter>("");
   const PAGE_SIZE = 60;
   const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
+  useEffect(() => { setVisibleLimit(PAGE_SIZE); }, [activeSlug, search, selectedGender, selectedPerfumeryStyle, selectedJewelryMaterial]);
 
   const { data: allCategories = [] } = trpc.categories.list.useQuery();
   const activeCategory = allCategories.find(c => c.slug === activeSlug);
@@ -31,12 +36,9 @@ export default function Catalogo() {
     categoryId: activeCategory?.id ? Number(activeCategory.id) : undefined,
     search: search || undefined,
     gender: selectedGender || undefined,
-    limit: visibleLimit + 1,
-  });
-
-  useEffect(() => {
-    setVisibleLimit(PAGE_SIZE);
-  }, [activeSlug, search, selectedGender]);
+    perfumeryStyle: selectedPerfumeryStyle || undefined,
+    limit: selectedJewelryMaterial ? undefined : visibleLimit + 1,
+  }, { enabled: !activeSlug || Boolean(activeCategory) });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,9 +48,16 @@ export default function Catalogo() {
   const activeName = getPublicCategory(activeSlug)?.name ?? "Todos";
   const isPerfumeria = isPerfumeryCategory(activeSlug);
   const subcategoryOptions = getProductSubcategories(activeSlug);
-  const hasMore = queriedProducts.length > visibleLimit;
-  const loadedProducts = queriedProducts.slice(0, visibleLimit);
-  const products = activeSlug ? loadedProducts : loadedProducts.filter(isJewelryProduct);
+  const products = useMemo(() => {
+    const categoryProducts = activeSlug ? queriedProducts : queriedProducts.filter(isJewelryProduct);
+    const filteredProducts = isPerfumeria || !selectedJewelryMaterial
+      ? categoryProducts
+      : categoryProducts.filter((product) => matchesJewelryMaterialFilter(product, selectedJewelryMaterial));
+    return isPerfumeria ? shuffleCatalogProducts(filteredProducts) : filteredProducts;
+  }, [activeSlug, isPerfumeria, queriedProducts, search, selectedGender, selectedPerfumeryStyle, selectedJewelryMaterial]);
+
+  const hasMore = products.length > visibleLimit;
+  const visibleProducts = products.slice(0, visibleLimit);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -72,7 +81,7 @@ export default function Catalogo() {
                 <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Joyería</p>
                 <div className="flex flex-wrap gap-2">
                   <Link href="/catalogo">
-                    <button className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
+                    <button onClick={() => setSelectedJewelryMaterial("")} className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${
                       !activeSlug ? "bg-brand-green text-white border-brand-green" : "bg-white text-gray-700 border-gray-200 hover:border-brand-green hover:text-brand-green"
                     }`}>Todas las joyas</button>
                   </Link>
@@ -84,6 +93,24 @@ export default function Catalogo() {
                     </Link>
                   ))}
                 </div>
+                {!isPerfumeria && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {JEWELRY_MATERIAL_FILTERS.slice(1).map(({ value, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setSelectedJewelryMaterial(value)}
+                        className={`rounded-full border px-4 py-2 text-sm font-medium transition-all ${
+                          selectedJewelryMaterial === value
+                            ? "border-brand-green bg-brand-green text-white"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-brand-green hover:text-brand-green"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">Perfumería</p>
@@ -106,7 +133,6 @@ export default function Catalogo() {
 
           {activeSlug && (
             <div className="mb-8 rounded-2xl border border-[#CDAA4E]/30 bg-white p-4">
-              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-brand-green">{getSubcategoryTitle(activeSlug)}</p>
               <div className="flex flex-wrap gap-2">
                 {subcategoryOptions.map(({ value, label }) => (
                   <button
@@ -123,6 +149,25 @@ export default function Catalogo() {
                   </button>
                 ))}
               </div>
+              {isPerfumeria && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#CDAA4E]/20 pt-3">
+                  <span className="mr-1 text-[10px] font-bold uppercase tracking-widest text-gray-500">Estilo</span>
+                  {PERFUMERY_STYLES.map(({ value, label }) => (
+                    <button
+                      key={value || "todos-estilos"}
+                      type="button"
+                      onClick={() => setSelectedPerfumeryStyle(value)}
+                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
+                        selectedPerfumeryStyle === value
+                          ? "border-brand-green bg-brand-green text-white"
+                          : "border-[#CDAA4E]/40 bg-white text-gray-700 hover:border-brand-green hover:text-brand-green"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -148,18 +193,13 @@ export default function Catalogo() {
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {products.map(p => <ProductCard key={p.id} {...p} />)}
+                {visibleProducts.map(p => <ProductCard key={p.id} {...p} />)}
               </div>
-
               {hasMore && (
                 <div className="mt-10 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => setVisibleLimit(current => current + PAGE_SIZE)}
-                    className="rounded-xl border border-brand-green px-6 py-3 text-sm font-semibold text-brand-green transition-colors hover:bg-brand-green hover:text-white"
-                  >
-                    Cargar más productos
-                  </button>
+                  <Button type="button" variant="outline" onClick={() => setVisibleLimit(v => v + PAGE_SIZE)}>
+                    Ver más productos
+                  </Button>
                 </div>
               )}
             </>

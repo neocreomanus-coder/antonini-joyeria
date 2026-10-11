@@ -14,6 +14,11 @@ export const PERFUMERY_SUBCATEGORIES = [
   { value: "ninos", label: "Niños" },
 ] as const;
 
+export const PERFUMERY_STYLES = [
+  { value: "", label: "Todos los estilos" },
+  { value: "arabe", label: "Árabe" },
+] as const;
+
 // Compatibilidad para cualquier integración anterior que aún importe esta constante.
 export const PRODUCT_SUBCATEGORIES = JEWELRY_SUBCATEGORIES;
 

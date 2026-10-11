@@ -10,7 +10,7 @@ export default function AdminHero() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Hero de la Tienda</h1>
-          <p className="mt-1 text-sm text-gray-500">Administra las diapositivas de imágenes y videos que se muestran en el carrusel principal.</p>
+          <p className="mt-1 text-sm text-gray-500">Administra el único video fijo que se muestra en el hero principal.</p>
         </div>
       </div>
 

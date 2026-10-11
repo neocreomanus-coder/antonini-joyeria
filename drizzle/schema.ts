@@ -50,6 +50,8 @@ export const products = mysqlTable("products", {
   description: text("description"),
   material: varchar("material", { length: 100 }),
   materials: text("materials"),
+  customStoneName: varchar("customStoneName", { length: 100 }),
+  customStoneColor: varchar("customStoneColor", { length: 7 }),
   basePrice: decimal("basePrice", { precision: 12, scale: 2 }).notNull(),
   originalPrice: decimal("originalPrice", { precision: 12, scale: 2 }),
   reference: varchar("reference", { length: 100 }),
@@ -60,6 +62,7 @@ export const products = mysqlTable("products", {
   homeSection: varchar("homeSection", { length: 64 }),
   volumeMl: int("volumeMl"),
   gender: mysqlEnum("gender", ["masculino", "femenino", "unisex", "ninos"]),
+  perfumeryStyle: mysqlEnum("perfumeryStyle", ["arabe"]),
   stock: int("stock").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -122,7 +125,8 @@ export const orders = mysqlTable("orders", {
   status: mysqlEnum("status", ["pendiente", "despachado", "entregado"])
     .default("pendiente")
     .notNull(),
-  shippingCarrier: mysqlEnum("shippingCarrier", ["coordinadora", "interrapidisimo"])
+  inventoryReserved: boolean("inventoryReserved").default(false).notNull(),
+  shippingCarrier: mysqlEnum("shippingCarrier", ["coordinadora", "interrapidisimo", "dhl"])
     .default("interrapidisimo")
     .notNull(),
   interrapidisimoGuide: varchar("interrapidisimoGuide", { length: 100 }),

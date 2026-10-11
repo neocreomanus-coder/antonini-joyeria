@@ -4,6 +4,7 @@ import {
   getSubcategoryTitle,
   JEWELRY_SUBCATEGORIES,
   PERFUMERY_SUBCATEGORIES,
+  PERFUMERY_STYLES,
 } from "./productSubcategories";
 
 describe("subcategorías de producto", () => {
@@ -12,6 +13,7 @@ describe("subcategorías de producto", () => {
     expect(getProductSubcategories("anillos")).toBe(JEWELRY_SUBCATEGORIES);
     expect(getProductSubcategories("perfumeria")).toBe(PERFUMERY_SUBCATEGORIES);
     expect(PERFUMERY_SUBCATEGORIES.map((option) => option.value)).toEqual(["", "masculino", "femenino", "unisex", "ninos"]);
+    expect(PERFUMERY_STYLES.map((option) => option.value)).toEqual(["", "arabe"]);
   });
 
   it("usa un título específico según el tipo de catálogo", () => {

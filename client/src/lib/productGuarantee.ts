@@ -1,11 +1,25 @@
 export function getProductGuarantee(materials: string[]): string {
   const normalized = materials.map((material) => material.trim().toUpperCase());
+  const gemstoneMaterials = new Set([
+    "ESMERALDAS",
+    "MOISSANITAS",
+    "RUBÍ",
+    "DIAMANTES",
+    "DIAMANTE NEGRO",
+    "DIAMANTE AZUL",
+    "DIAMANTE AMARILLO",
+    "ÓPALO",
+    "CIRCÓN SUIZO",
+    "AMATISTA",
+    "ZAFIRO",
+    "PIEDRA PERSONALIZADA",
+  ]);
 
   if (normalized.includes("PERFUMERÍA ORIGINAL") || normalized.includes("PERFUMERIA ORIGINAL") || normalized.includes("FRAGANCIA ORIGINAL")) {
     return "Fragancia Original";
   }
 
-  if (normalized.includes("ESMERALDAS") || normalized.includes("MOISSANITAS")) {
+  if (normalized.some((material) => gemstoneMaterials.has(material))) {
     return "Piedra Garantizada";
   }
 

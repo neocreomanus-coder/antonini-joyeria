@@ -1,0 +1,1 @@
+ALTER TABLE `products` MODIFY COLUMN `gender` enum('masculino','femenino','unisex','ninos','arabe');

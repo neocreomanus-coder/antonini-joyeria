@@ -14,7 +14,7 @@ export default function TrackOrder() {
   const [value, setValue] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const tracking = trpc.orders.track.useQuery({ orderNumber }, { enabled: Boolean(orderNumber), retry: false });
-  const carrierName = tracking.data?.shippingCarrier === "coordinadora" ? "Coordinadora" : "Inter Rapidísimo";
+  const carrierName = tracking.data?.shippingCarrier === "coordinadora" ? "Coordinadora" : tracking.data?.shippingCarrier === "dhl" ? "DHL" : "Inter Rapidísimo";
   const detail = tracking.data
     ? {
       ...STATUS[tracking.data.status],

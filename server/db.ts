@@ -1,4 +1,4 @@
-import { and, desc, eq, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { randomUUID } from "node:crypto";
 import {
@@ -18,8 +18,11 @@ import {
 import { siteConfig } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { getGenderFilterValues } from "../shared/genderFiltering";
+import { consolidateInventoryRequests, inventoryUnavailableMessage } from "./inventory";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+// Off by default to preserve existing orders/catalog while stocks are being audited.
+const INVENTORY_ENFORCED = process.env.INVENTORY_ENFORCEMENT === "true";
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
@@ -116,7 +119,25 @@ function parseProduct<T extends { imageUrlsRaw?: string | null; materialsRaw?: u
 }
 
 // ── Products ──────────────────────────────────────────────────────────────────
-export async function getProducts(opts?: { categoryId?: number; search?: string; featured?: boolean; homeSection?: string; gender?: "masculino" | "femenino" | "unisex" | "ninos"; limit?: number; offset?: number }) {
+// Carga las variantes de la página en una sola consulta, sin imponer límites adicionales.
+async function attachProductVariants<T extends { id: number }>(rows: T[]) {
+  if (rows.length === 0) return rows.map(row => ({ ...row, variants: [] as (typeof productVariants.$inferSelect)[] }));
+  const db = await getDb();
+  if (!db) return rows.map(row => ({ ...row, variants: [] as (typeof productVariants.$inferSelect)[] }));
+  const variants = await db.select().from(productVariants).where(and(
+    inArray(productVariants.productId, rows.map(row => row.id)),
+    eq(productVariants.active, true),
+  ));
+  const grouped = new Map<number, typeof variants>();
+  for (const variant of variants) {
+    const group = grouped.get(variant.productId) ?? [];
+    group.push(variant);
+    grouped.set(variant.productId, group);
+  }
+  return rows.map(row => ({ ...row, variants: grouped.get(row.id) ?? [] }));
+}
+
+export async function getProducts(opts?: { categoryId?: number; search?: string; featured?: boolean; homeSection?: string; gender?: "masculino" | "femenino" | "unisex" | "ninos"; perfumeryStyle?: "arabe"; limit?: number; offset?: number }) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [eq(products.active, true)];
@@ -131,6 +152,7 @@ export async function getProducts(opts?: { categoryId?: number; search?: string;
         : or(...genderValues.map(gender => eq(products.gender, gender))) as ReturnType<typeof eq>
     );
   }
+  if (opts?.perfumeryStyle) conditions.push(eq(products.perfumeryStyle, opts.perfumeryStyle) as ReturnType<typeof eq>);
   if (opts?.search) {
     const s = `%${opts.search}%`;
     conditions.push(or(like(products.name, s), like(products.description, s)) as ReturnType<typeof eq>);
@@ -138,6 +160,7 @@ export async function getProducts(opts?: { categoryId?: number; search?: string;
   let query = db.select({
     id: products.id, name: products.name, slug: products.slug,
     description: products.description, material: products.material, materialsRaw: products.materials,
+    customStoneName: products.customStoneName, customStoneColor: products.customStoneColor,
     basePrice: products.basePrice, originalPrice: products.originalPrice, reference: products.reference, categoryId: products.categoryId,
     active: products.active, featured: products.featured,
     imageUrlsRaw: products.imageUrls, stock: products.stock,
@@ -146,6 +169,7 @@ export async function getProducts(opts?: { categoryId?: number; search?: string;
     homeSection: products.homeSection,
     volumeMl: products.volumeMl,
     gender: products.gender,
+    perfumeryStyle: products.perfumeryStyle,
   })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
@@ -158,10 +182,10 @@ export async function getProducts(opts?: { categoryId?: number; search?: string;
   }
 
   const rows = await query;
-  return rows.map(parseProduct);
+  return attachProductVariants(rows.map(parseProduct));
 }
 
-export async function getProductsCount(opts?: { categoryId?: number; search?: string; featured?: boolean; homeSection?: string; gender?: "masculino" | "femenino" | "unisex" | "ninos" }) {
+export async function getProductsCount(opts?: { categoryId?: number; search?: string; featured?: boolean; homeSection?: string; gender?: "masculino" | "femenino" | "unisex" | "ninos"; perfumeryStyle?: "arabe" }) {
   const db = await getDb();
   if (!db) return 0;
 
@@ -180,6 +204,7 @@ export async function getProductsCount(opts?: { categoryId?: number; search?: st
     );
   }
 
+  if (opts?.perfumeryStyle) conditions.push(eq(products.perfumeryStyle, opts.perfumeryStyle) as ReturnType<typeof eq>);
   if (opts?.search) {
     const s = `%${opts.search}%`;
     conditions.push(or(like(products.name, s), like(products.description, s)) as ReturnType<typeof eq>);
@@ -210,6 +235,7 @@ export async function getAllProducts(opts?: { limit?: number; offset?: number; s
   let query = db.select({
     id: products.id, name: products.name, slug: products.slug,
     description: products.description, material: products.material, materialsRaw: products.materials,
+    customStoneName: products.customStoneName, customStoneColor: products.customStoneColor,
     basePrice: products.basePrice, originalPrice: products.originalPrice, reference: products.reference, categoryId: products.categoryId,
     active: products.active, featured: products.featured,
     imageUrlsRaw: products.imageUrls, stock: products.stock,
@@ -218,6 +244,7 @@ export async function getAllProducts(opts?: { limit?: number; offset?: number; s
     homeSection: products.homeSection,
     volumeMl: products.volumeMl,
     gender: products.gender,
+    perfumeryStyle: products.perfumeryStyle,
   })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
@@ -233,7 +260,7 @@ export async function getAllProducts(opts?: { limit?: number; offset?: number; s
   }
 
   const rows = await query;
-  return rows.map(parseProduct);
+  return attachProductVariants(rows.map(parseProduct));
 }
 
 export async function getAllProductsCount(opts?: { search?: string }) {
@@ -267,11 +294,13 @@ export async function getProductBySlug(slug: string) {
   const result = await db.select({
     id: products.id, name: products.name, slug: products.slug,
     description: products.description, material: products.material, materialsRaw: products.materials,
+    customStoneName: products.customStoneName, customStoneColor: products.customStoneColor,
     basePrice: products.basePrice, originalPrice: products.originalPrice, reference: products.reference, categoryId: products.categoryId,
     active: products.active, featured: products.featured,
     imageUrlsRaw: products.imageUrls, stock: products.stock,
     createdAt: products.createdAt, updatedAt: products.updatedAt,
     categoryName: categories.name, categorySlug: categories.slug,
+    perfumeryStyle: products.perfumeryStyle,
   })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
@@ -300,6 +329,8 @@ export async function getPublicProductById(id: number) {
     description: products.description,
     material: products.material,
     materialsRaw: products.materials,
+    customStoneName: products.customStoneName,
+    customStoneColor: products.customStoneColor,
     basePrice: products.basePrice,
     originalPrice: products.originalPrice,
     reference: products.reference,
@@ -314,6 +345,7 @@ export async function getPublicProductById(id: number) {
     homeSection: products.homeSection,
     volumeMl: products.volumeMl,
     gender: products.gender,
+    perfumeryStyle: products.perfumeryStyle,
   })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
@@ -321,7 +353,10 @@ export async function getPublicProductById(id: number) {
     .limit(1);
 
   const product = result[0];
-  return product ? parseProduct(product) : undefined;
+  if (!product) return undefined;
+  const parsed = parseProduct(product);
+  const [enriched] = await attachProductVariants([parsed]);
+  return enriched;
 }
 
 export async function getProductVariants(productId: number) {
@@ -333,8 +368,9 @@ export async function getProductVariants(productId: number) {
 
 export async function createProduct(data: {
   name: string; slug: string; description?: string; material?: string; materials?: string[];
+  customStoneName?: string | null; customStoneColor?: string | null;
   basePrice: string; originalPrice?: string | null; reference?: string | null; categoryId: number; featured?: boolean; imageUrls?: string[]; stock?: number;
-  homeSection?: string; volumeMl?: number; gender?: "masculino" | "femenino" | "unisex" | "ninos";
+  homeSection?: string; volumeMl?: number; gender?: "masculino" | "femenino" | "unisex" | "ninos"; perfumeryStyle?: "arabe" | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -352,8 +388,9 @@ export async function createProduct(data: {
 
 export async function updateProduct(id: number, data: Partial<{
   name: string; slug: string; description: string; material: string; materials: string[];
+  customStoneName: string | null; customStoneColor: string | null;
   basePrice: string; originalPrice: string | null; reference: string | null; categoryId: number; active: boolean; featured: boolean; imageUrls: string[]; stock: number;
-  homeSection: string; volumeMl: number; gender: "masculino" | "femenino" | "unisex" | "ninos";
+  homeSection: string; volumeMl: number; gender: "masculino" | "femenino" | "unisex" | "ninos"; perfumeryStyle: "arabe" | null;
 }>) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -381,13 +418,32 @@ export async function deleteProduct(id: number) {
   return { deleted: true, archived: false };
 }
 
-export async function upsertProductVariants(productId: number, variants: Array<{ type: "size" | "length" | "color"; value: string; priceModifier?: string; stock?: number }>) {
+export async function upsertProductVariants(productId: number, variants: Array<{ id?: number; type: "size" | "length" | "color"; value: string; priceModifier?: string; stock?: number }>) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  await db.delete(productVariants).where(eq(productVariants.productId, productId));
-  if (variants.length > 0) {
-    await db.insert(productVariants).values(variants.map(v => ({ ...v, productId, active: true })));
-  }
+  await db.transaction(async (tx) => {
+    const existing = await tx.select({ id: productVariants.id })
+      .from(productVariants)
+      .where(eq(productVariants.productId, productId));
+    const existingIds = new Set(existing.map((variant) => variant.id));
+    const retainedIds = new Set(variants.flatMap((variant) => variant.id && existingIds.has(variant.id) ? [variant.id] : []));
+
+    for (const variant of variants) {
+      const { id, ...values } = variant;
+      if (id && existingIds.has(id)) {
+        await tx.update(productVariants).set({ ...values, active: true })
+          .where(and(eq(productVariants.id, id), eq(productVariants.productId, productId)));
+      } else {
+        await tx.insert(productVariants).values({ ...values, productId, active: true });
+      }
+    }
+
+    for (const existingVariant of existing) {
+      if (!retainedIds.has(existingVariant.id)) {
+        await tx.delete(productVariants).where(eq(productVariants.id, existingVariant.id));
+      }
+    }
+  });
 }
 
 // ── Cart ──────────────────────────────────────────────────────────────────────
@@ -401,9 +457,10 @@ export async function getCartItems(key: { userId?: number; sessionId?: string })
     sessionId: cartItems.sessionId, userId: cartItems.userId,
     productName: products.name, productSlug: products.slug,
     productMaterial: products.material, productReference: products.reference, productBasePrice: products.basePrice,
+    productStock: products.stock,
     productImageUrlsRaw: products.imageUrls,
     variantType: productVariants.type, variantValue: productVariants.value,
-    variantPriceModifier: productVariants.priceModifier,
+    variantPriceModifier: productVariants.priceModifier, variantStock: productVariants.stock,
   })
     .from(cartItems)
     .leftJoin(products, eq(cartItems.productId, products.id))
@@ -417,6 +474,48 @@ export async function getCartItems(key: { userId?: number; sessionId?: string })
   });
 }
 
+type InventoryItem = { productId: number; variantId?: number | null; quantity: number };
+
+async function assertInventoryAvailability(database: any, item: InventoryItem) {
+  if (!Number.isInteger(item.quantity) || item.quantity <= 0) throw new Error("La cantidad solicitada no es válida");
+  const [product] = await database.select({ id: products.id, active: products.active, stock: products.stock })
+    .from(products)
+    .where(eq(products.id, item.productId))
+    .limit(1);
+
+  if (!product || !product.active || Number(product.stock) < item.quantity) {
+    throw new Error(inventoryUnavailableMessage());
+  }
+
+  const activeVariants = await database.select({ id: productVariants.id })
+    .from(productVariants)
+    .where(and(eq(productVariants.productId, item.productId), eq(productVariants.active, true)));
+  if (activeVariants.length > 0 && !item.variantId) {
+    throw new Error("Selecciona una talla o largo disponible antes de agregar este producto");
+  }
+
+  if (item.variantId) {
+    const [variant] = await database.select({ id: productVariants.id, active: productVariants.active, stock: productVariants.stock })
+      .from(productVariants)
+      .where(and(eq(productVariants.id, item.variantId), eq(productVariants.productId, item.productId)))
+      .limit(1);
+
+    if (!variant || !variant.active || Number(variant.stock) < item.quantity) {
+      throw new Error(inventoryUnavailableMessage());
+    }
+  }
+}
+
+export async function validateInventory(items: InventoryItem[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  if (INVENTORY_ENFORCED) {
+    for (const item of consolidateInventoryRequests(items)) {
+      await assertInventoryAvailability(db, item);
+    }
+  }
+}
+
 export async function addCartItem(data: { userId?: number; sessionId?: string; productId: number; variantId?: number; quantity: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -426,6 +525,13 @@ export async function addCartItem(data: { userId?: number; sessionId?: string; p
     : and(eq(cartItems.sessionId, data.sessionId!), eq(cartItems.productId, data.productId),
         data.variantId ? eq(cartItems.variantId, data.variantId) : sql`${cartItems.variantId} IS NULL`);
   const existing = await db.select().from(cartItems).where(condition).limit(1);
+  if (INVENTORY_ENFORCED) {
+    await assertInventoryAvailability(db, {
+      productId: data.productId,
+      variantId: data.variantId,
+      quantity: (existing[0]?.quantity ?? 0) + data.quantity,
+    });
+  }
   if (existing[0]) {
     await db.update(cartItems).set({ quantity: existing[0].quantity + data.quantity }).where(eq(cartItems.id, existing[0].id));
   } else {
@@ -433,11 +539,30 @@ export async function addCartItem(data: { userId?: number; sessionId?: string; p
   }
 }
 
-export async function updateCartItemQuantity(id: number, quantity: number) {
+type CartQuantityUpdate = { id: number; quantity: number; userId?: number; sessionId?: string };
+
+// Mantiene ambas firmas mientras se integra el nuevo router en la rama de pruebas.
+export async function updateCartItemQuantity(id: number, quantity: number): Promise<void>;
+export async function updateCartItemQuantity(data: CartQuantityUpdate): Promise<void>;
+export async function updateCartItemQuantity(idOrData: number | CartQuantityUpdate, legacyQuantity?: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  if (quantity <= 0) await db.delete(cartItems).where(eq(cartItems.id, id));
-  else await db.update(cartItems).set({ quantity }).where(eq(cartItems.id, id));
+  const data: CartQuantityUpdate = typeof idOrData === "number"
+    ? { id: idOrData, quantity: legacyQuantity ?? 0 }
+    : idOrData;
+  const ownerCondition = data.userId != null
+    ? eq(cartItems.userId, data.userId)
+    : data.sessionId ? eq(cartItems.sessionId, data.sessionId) : undefined;
+  const condition = ownerCondition ? and(eq(cartItems.id, data.id), ownerCondition) : eq(cartItems.id, data.id);
+  if (data.quantity <= 0) {
+    await db.delete(cartItems).where(condition);
+    return;
+  }
+  const [item] = await db.select({ productId: cartItems.productId, variantId: cartItems.variantId })
+    .from(cartItems).where(condition).limit(1);
+  if (!item) throw new Error("No encontramos este producto en tu carrito");
+  if (INVENTORY_ENFORCED) await assertInventoryAvailability(db, { ...item, quantity: data.quantity });
+  await db.update(cartItems).set({ quantity: data.quantity }).where(condition);
 }
 
 export async function removeCartItem(id: number) {
@@ -578,23 +703,19 @@ export function formatOrderNumber(order: { id: number; orderNumber?: string | nu
   return order.orderNumber ?? `ANT-${String(order.id).padStart(6, "0")}`;
 }
 
-async function reserveOrderNumber(paymentMethod: "contraentrega" | "wompi") {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  return db.transaction(async (tx) => {
-    const existing = await tx.select({ nextNumber: orderSequences.nextNumber })
-      .from(orderSequences)
-      .where(eq(orderSequences.paymentMethod, paymentMethod))
-      .limit(1);
-    const allocated = existing[0]?.nextNumber ?? ORDER_SEQUENCE_START[paymentMethod];
-    if (existing[0]) {
-      await tx.update(orderSequences).set({ nextNumber: allocated + 1 })
-        .where(eq(orderSequences.paymentMethod, paymentMethod));
-    } else {
-      await tx.insert(orderSequences).values({ paymentMethod, nextNumber: allocated + 1 });
-    }
-    return `ANT-${String(allocated).padStart(6, "0")}`;
-  });
+async function reserveOrderNumberInTransaction(database: any, paymentMethod: "contraentrega" | "wompi") {
+  const existing = await database.select({ nextNumber: orderSequences.nextNumber })
+    .from(orderSequences)
+    .where(eq(orderSequences.paymentMethod, paymentMethod))
+    .limit(1);
+  const allocated = existing[0]?.nextNumber ?? ORDER_SEQUENCE_START[paymentMethod];
+  if (existing[0]) {
+    await database.update(orderSequences).set({ nextNumber: allocated + 1 })
+      .where(eq(orderSequences.paymentMethod, paymentMethod));
+  } else {
+    await database.insert(orderSequences).values({ paymentMethod, nextNumber: allocated + 1 });
+  }
+  return `ANT-${String(allocated).padStart(6, "0")}`;
 }
 
 export async function createOrder(data: {
@@ -609,39 +730,66 @@ export async function createOrder(data: {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const publicToken = randomUUID().replace(/-/g, "");
-  const orderNumber = await reserveOrderNumber(data.paymentMethod);
-  const [result] = await db.insert(orders).values({
-    orderNumber,
-    publicToken,
-    userId: data.userId, guestEmail: data.guestEmail,
-    total: data.total, subtotal: data.subtotal,
-    popupDiscountPercent: data.popupDiscountPercent,
-    popupDiscountAmount: data.popupDiscountAmount,
-    promoCode: data.promoCode,
-    promoDiscountPercent: data.promoDiscountPercent,
-    promoDiscountAmount: data.promoDiscountAmount,
-    shippingAddress: JSON.stringify(data.shippingAddress),
-    stripePaymentIntentId: data.stripePaymentIntentId,
-    paymentMethod: data.paymentMethod,
-    paymentStatus: data.paymentMethod === "wompi" ? "pendiente_comprobante" : "pendiente_contraentrega",
-    status: "pendiente",
+  const createdOrder = await db.transaction(async (tx) => {
+    const inventoryItems = consolidateInventoryRequests(data.items);
+    for (const item of INVENTORY_ENFORCED ? inventoryItems : []) {
+      await assertInventoryAvailability(tx, item);
+
+      const productUpdate = await tx.update(products)
+        .set({ stock: sql`${products.stock} - ${item.quantity}` })
+        .where(and(eq(products.id, item.productId), eq(products.active, true), gte(products.stock, item.quantity)));
+      if ((productUpdate as any)[0]?.affectedRows !== 1) throw new Error(inventoryUnavailableMessage());
+
+      if (item.variantId) {
+        const variantUpdate = await tx.update(productVariants)
+          .set({ stock: sql`${productVariants.stock} - ${item.quantity}` })
+          .where(and(
+            eq(productVariants.id, item.variantId),
+            eq(productVariants.productId, item.productId),
+            eq(productVariants.active, true),
+            gte(productVariants.stock, item.quantity),
+          ));
+        if ((variantUpdate as any)[0]?.affectedRows !== 1) throw new Error(inventoryUnavailableMessage());
+      }
+    }
+
+    const orderNumber = await reserveOrderNumberInTransaction(tx, data.paymentMethod);
+
+    const [result] = await tx.insert(orders).values({
+      orderNumber,
+      publicToken,
+      userId: data.userId, guestEmail: data.guestEmail,
+      total: data.total, subtotal: data.subtotal,
+      popupDiscountPercent: data.popupDiscountPercent,
+      popupDiscountAmount: data.popupDiscountAmount,
+      promoCode: data.promoCode,
+      promoDiscountPercent: data.promoDiscountPercent,
+      promoDiscountAmount: data.promoDiscountAmount,
+      shippingAddress: JSON.stringify(data.shippingAddress),
+      stripePaymentIntentId: data.stripePaymentIntentId,
+      paymentMethod: data.paymentMethod,
+      paymentStatus: data.paymentMethod === "wompi" ? "pendiente_comprobante" : "pendiente_contraentrega",
+      status: "pendiente",
+      inventoryReserved: INVENTORY_ENFORCED,
+    });
+    const createdOrderId = (result as any).insertId as number;
+    if (data.items.length > 0) {
+      await tx.insert(orderItems).values(data.items.map(item => ({
+        orderId: createdOrderId,
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        productSnapshot: JSON.stringify(item.productSnapshot),
+      })));
+    }
+    return { id: createdOrderId, orderNumber };
   });
-  const orderId = (result as any).insertId as number;
-  if (data.items.length > 0) {
-    await db.insert(orderItems).values(data.items.map(item => ({
-      orderId,
-      productId: item.productId,
-      variantId: item.variantId,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      productSnapshot: JSON.stringify(item.productSnapshot),
-    })));
-  }
-  return { id: orderId, publicToken, orderNumber };
+  return { id: createdOrder.id, publicToken, orderNumber: createdOrder.orderNumber };
 }
 
 export type ShipmentStatus = "pendiente" | "despachado" | "entregado";
-export type ShippingCarrier = "coordinadora" | "interrapidisimo";
+export type ShippingCarrier = "coordinadora" | "interrapidisimo" | "dhl";
 
 export async function getOrderPaymentInfoByToken(publicToken: string) {
   const db = await getDb();
@@ -768,6 +916,24 @@ export async function deleteOrder(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.transaction(async (tx) => {
+    const [order] = await tx.select({ inventoryReserved: orders.inventoryReserved, status: orders.status })
+      .from(orders)
+      .where(eq(orders.id, id))
+      .limit(1);
+    const items = await tx.select({ productId: orderItems.productId, variantId: orderItems.variantId, quantity: orderItems.quantity })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, id));
+    // No devolver al inventario mercancia ya despachada o entregada.
+    if (order?.inventoryReserved && order.status === "pendiente") {
+      for (const item of consolidateInventoryRequests(items)) {
+        await tx.update(products).set({ stock: sql`${products.stock} + ${item.quantity}` })
+          .where(eq(products.id, item.productId));
+        if (item.variantId) {
+          await tx.update(productVariants).set({ stock: sql`${productVariants.stock} + ${item.quantity}` })
+            .where(and(eq(productVariants.id, item.variantId), eq(productVariants.productId, item.productId)));
+        }
+      }
+    }
     await tx.delete(orderItems).where(eq(orderItems.orderId, id));
     await tx.delete(orders).where(eq(orders.id, id));
   });

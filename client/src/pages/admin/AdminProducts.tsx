@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Plus, Edit2, Eye, EyeOff, Upload, X, Gem, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import MaterialPicker from "@/components/MaterialPicker";
-import { getProductSubcategories } from "@/lib/productSubcategories";
+import { getProductSubcategories, PERFUMERY_STYLES } from "@/lib/productSubcategories";
 import { normalizeMaterialValue } from "@/lib/materialOptions";
 
 function fmt(n: string | number) { return `$ ${Number(n).toLocaleString("es-CO")}`; }
@@ -19,7 +19,7 @@ export default function AdminProducts() {
   const [uploading, setUploading] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [form, setForm] = useState({ name: "", slug: "", reference: "", materials: ["ORO 18K NACIONAL"], basePrice: "", originalPrice: "", categoryId: "", stock: "99", featured: false, homeSection: "", volumeMl: "", gender: "" });
+  const [form, setForm] = useState({ name: "", slug: "", reference: "", materials: ["ORO 18K NACIONAL"], customStoneName: "", customStoneColor: "#7c3aed", basePrice: "", originalPrice: "", categoryId: "", stock: "99", featured: false, homeSection: "", volumeMl: "", gender: "", perfumeryStyle: "" });
 
   // ── Variants state ──
   const RING_SIZES   = ["5","6","7","8","9","10","11","12","13","14"];
@@ -29,9 +29,14 @@ export default function AdminProducts() {
   const [selectedLengths, setSelectedLengths] = useState<string[]>([]);
   const [customSize, setCustomSize] = useState("");
   const [customLength, setCustomLength] = useState("");
+  const [variantInventory, setVariantInventory] = useState<Record<string, { id?: number; stock: string }>>({});
 
   const toggleSize = (v: string) => setSelectedSizes(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
   const toggleLength = (v: string) => setSelectedLengths(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]);
+  const getVariantInventory = (type: "size" | "length", value: string) => variantInventory[`${type}:${value}`] ?? { stock: form.stock || "0" };
+  const setVariantStock = (type: "size" | "length", value: string, stock: string) => {
+    setVariantInventory(current => ({ ...current, [`${type}:${value}`]: { ...getVariantInventory(type, value), stock } }));
+  };
   const addCustomSize = () => {
     const v = customSize.trim();
     if (v && !selectedSizes.includes(v)) { setSelectedSizes(p => [...p, v]); }
@@ -64,7 +69,6 @@ export default function AdminProducts() {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
-
   const { data: categories = [] } = trpc.categories.listAll.useQuery();
   const selectedCategory = (categories as any[]).find((category: any) => String(category.id) === form.categoryId);
   const isPerfumeriaCategory = selectedCategory?.slug === "perfumeria";
@@ -84,13 +88,8 @@ export default function AdminProducts() {
     }
   }, [form.categoryId, categories]);
 
-  const createMutation = trpc.products.create.useMutation({ onSuccess: () => {
-    toast.success("Producto creado");
-    utils.products.adminList.invalidate();
-    utils.products.adminCount.invalidate();
-    reset();
-  } });
-  const updateMutation = trpc.products.update.useMutation({ onSuccess: () => { toast.success("Actualizado"); utils.products.adminList.invalidate(); reset(); } });
+  const createMutation = trpc.products.create.useMutation({ onSuccess: () => { toast.success("Producto creado"); utils.products.adminList.invalidate(); utils.products.adminCount.invalidate(); reset(); } });
+  const updateMutation = trpc.products.update.useMutation({ onSuccess: () => { toast.success("Actualizado"); utils.products.adminList.invalidate(); utils.products.adminCount.invalidate(); reset(); } });
   const toggleMutation = trpc.products.toggleActive.useMutation({ onSuccess: () => utils.products.adminList.invalidate() });
   const deleteMutation = trpc.products.delete.useMutation({ onSuccess: (result: any) => {
     toast.success(result?.archived ? "Producto retirado de la tienda; se conservaron sus pedidos" : "Producto eliminado");
@@ -100,18 +99,19 @@ export default function AdminProducts() {
   } });
   const reset = () => {
     setShowForm(false); setEditId(null); setImages([]);
-    setForm({ name: "", slug: "", reference: "", materials: ["ORO 18K NACIONAL"], basePrice: "", originalPrice: "", categoryId: "", stock: "99", featured: false, homeSection: "", volumeMl: "", gender: "" });
-    setVariantType("none"); setSelectedSizes([]); setSelectedLengths([]); setCustomSize(""); setCustomLength("");
+    setForm({ name: "", slug: "", reference: "", materials: ["ORO 18K NACIONAL"], customStoneName: "", customStoneColor: "#7c3aed", basePrice: "", originalPrice: "", categoryId: "", stock: "99", featured: false, homeSection: "", volumeMl: "", gender: "", perfumeryStyle: "" });
+    setVariantType("none"); setSelectedSizes([]); setSelectedLengths([]); setCustomSize(""); setCustomLength(""); setVariantInventory({});
   };
 
   const openEdit = (p: any) => {
     setEditId(p.id);
-    setForm({ name: p.name, slug: p.slug, reference: p.reference ?? "", materials: Array.isArray(p.materials) && p.materials.length > 0 ? p.materials.map(normalizeMaterialValue) : [normalizeMaterialValue(p.material)], basePrice: p.basePrice, originalPrice: p.originalPrice ?? "", categoryId: String(p.categoryId ?? ""), stock: String(p.stock ?? 99), featured: p.featured ?? false, homeSection: p.homeSection ?? "", volumeMl: p.volumeMl ? String(p.volumeMl) : "", gender: p.gender ?? "" });
+    setForm({ name: p.name, slug: p.slug, reference: p.reference ?? "", materials: Array.isArray(p.materials) && p.materials.length > 0 ? p.materials.map(normalizeMaterialValue) : [normalizeMaterialValue(p.material)], customStoneName: p.customStoneName ?? "", customStoneColor: p.customStoneColor ?? "#7c3aed", basePrice: p.basePrice, originalPrice: p.originalPrice ?? "", categoryId: String(p.categoryId ?? ""), stock: String(p.stock ?? 99), featured: p.featured ?? false, homeSection: p.homeSection ?? "", volumeMl: p.volumeMl ? String(p.volumeMl) : "", gender: p.gender ?? "", perfumeryStyle: p.perfumeryStyle ?? "" });
     setImages(Array.isArray(p.imageUrls) ? p.imageUrls : []);
     // Load existing variants
     const variants: any[] = Array.isArray(p.variants) ? p.variants : [];
     const sizes = variants.filter((v: any) => v.type === "size").map((v: any) => v.value);
     const lengths = variants.filter((v: any) => v.type === "length").map((v: any) => v.value);
+    setVariantInventory(Object.fromEntries(variants.map((variant: any) => [`${variant.type}:${variant.value}`, { id: variant.id, stock: String(variant.stock ?? 0) }])));
     setSelectedSizes(sizes);
     setSelectedLengths(lengths);
     if (sizes.length > 0) setVariantType("tallas");
@@ -151,11 +151,18 @@ export default function AdminProducts() {
     e.preventDefault();
     const variants =
       variantType === "tallas"
-        ? selectedSizes.map(v => ({ type: "size" as const, value: v, stock: 99 }))
+        ? selectedSizes.map(v => {
+          const inventory = getVariantInventory("size", v);
+          return { id: inventory.id, type: "size" as const, value: v, stock: Math.max(0, parseInt(inventory.stock) || 0) };
+        })
         : variantType === "largos"
-        ? selectedLengths.map(v => ({ type: "length" as const, value: v, stock: 99 }))
+        ? selectedLengths.map(v => {
+          const inventory = getVariantInventory("length", v);
+          return { id: inventory.id, type: "length" as const, value: v, stock: Math.max(0, parseInt(inventory.stock) || 0) };
+        })
         : [];
-    const data = { name: form.name, slug: form.slug, reference: form.reference.trim() || null, materials: form.materials, basePrice: form.basePrice, originalPrice: form.originalPrice || null, categoryId: parseInt(form.categoryId), featured: form.featured, imageUrls: images, stock: parseInt(form.stock) || 0, variants, homeSection: form.homeSection || undefined, volumeMl: form.volumeMl ? parseInt(form.volumeMl) : undefined, gender: (form.gender as any) || undefined };
+    const customStoneName = form.customStoneName.trim();
+    const data = { name: form.name, slug: form.slug, reference: form.reference.trim() || null, materials: form.materials, customStoneName: customStoneName || null, customStoneColor: customStoneName ? form.customStoneColor : null, basePrice: form.basePrice, originalPrice: form.originalPrice || null, categoryId: parseInt(form.categoryId), featured: form.featured, imageUrls: images, stock: Math.max(0, parseInt(form.stock) || 0), variants, homeSection: form.homeSection || undefined, volumeMl: form.volumeMl ? parseInt(form.volumeMl) : undefined, gender: (form.gender as any) || undefined, perfumeryStyle: isPerfumeriaCategory ? (form.perfumeryStyle || null) as any : null };
     if (editId) updateMutation.mutate({ id: editId, ...data });
     else createMutation.mutate(data);
   };
@@ -172,14 +179,7 @@ export default function AdminProducts() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl md:text-3xl font-sans font-bold text-gray-900">Productos</h1>
-            <p className="text-gray-500 text-sm mt-1">
-              {totalProducts} productos en el catálogo
-              {totalProducts > 0 && (
-                <span className="ml-2 text-gray-400">
-                  · Mostrando {firstProduct}–{lastProduct}
-                </span>
-              )}
-            </p>
+            <p className="text-gray-500 text-sm mt-1">{totalProducts} productos en el catálogo{totalProducts > 0 ? ` · Mostrando ${firstProduct}–${lastProduct}` : ""}</p>
           </div>
           <button onClick={() => { reset(); setShowForm(true); }} className="flex items-center gap-2 bg-brand-green text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-brand-green-light transition-colors shadow-sm">
             <Plus size={18} /> Nuevo Producto
@@ -206,8 +206,12 @@ export default function AdminProducts() {
                   </div>
                   <div className="p-3">
                     <p className="text-[10px] font-bold text-brand-green uppercase tracking-wide">{p.material || "ORO 18K"}</p>
+                    {p.customStoneName && <p className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-gray-500"><span className="h-2 w-2 rounded-full border border-black/10" style={{ backgroundColor: p.customStoneColor ?? "#7c3aed" }} /> Piedra: {p.customStoneName}</p>}
                     <p className="text-xs font-semibold text-gray-800 line-clamp-1 font-sans mt-0.5">{p.name}</p>
                     <p className="text-sm font-bold text-brand-green mt-1">{fmt(p.basePrice)}</p>
+                    <p className={`mt-1 text-[11px] font-semibold ${Number(p.stock) > 0 ? "text-gray-500" : "text-red-500"}`}>
+                      {Number(p.stock) > 0 ? `Stock general: ${p.stock}` : "Agotado"}{Array.isArray(p.variants) && p.variants.length > 0 ? ` · ${p.variants.length} variantes` : ""}
+                    </p>
                     <div className="flex gap-1.5 mt-2">
                       <button onClick={() => openEdit(p)} className="flex-1 flex items-center justify-center gap-1 border border-gray-200 text-gray-600 py-1.5 rounded-lg text-xs font-medium hover:border-brand-green hover:text-brand-green transition-colors">
                         <Edit2 size={11} /> Editar
@@ -289,18 +293,25 @@ export default function AdminProducts() {
                     { key: "reference", label: "Referencia manual", placeholder: "ej: ANT-CAD-001" },
                     { key: "basePrice", label: "Precio actual *", placeholder: "250000" },
                     { key: "originalPrice", label: "Precio anterior (tachado)", placeholder: "ej: 280000" },
-                    { key: "stock", label: "Stock", placeholder: "99" },
+                    { key: "stock", label: "Stock general", placeholder: "99" },
                   ].map(({ key, label, placeholder }) => (
                     <div key={key}>
                       <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
-                      <input value={(form as any)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder}
+                      <input type={key === "stock" ? "number" : "text"} min={key === "stock" ? 0 : undefined} value={(form as any)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} placeholder={placeholder}
                         className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-green transition-colors" />
                     </div>
                   ))}
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Materiales</label>
                     <p className="mb-2 text-xs text-gray-400">Puedes elegir varios acabados; el cliente los verá como opciones en la ficha del producto.</p>
-                    <MaterialPicker values={form.materials} onChange={(materials) => setForm((current) => ({ ...current, materials }))} />
+                    <MaterialPicker
+                      values={form.materials}
+                      onChange={(materials) => setForm((current) => ({ ...current, materials }))}
+                      customStoneName={form.customStoneName}
+                      customStoneColor={form.customStoneColor}
+                      onCustomStoneChange={({ name, color }) => setForm((current) => ({ ...current, customStoneName: name, customStoneColor: color }))}
+                    />
+                    <p className="mt-2 text-[11px] text-gray-400">La piedra personalizada se guarda con su color y aparecerá en la ficha del producto.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Categoría *</label>
@@ -320,6 +331,7 @@ export default function AdminProducts() {
                         { value: "trending",   label: "🔥 En tendencia" },
                         { value: "under300k",  label: "💚 Menos de $300k" },
                         { value: "under800k",  label: "✨ Menos de $800k" },
+                        { value: "silver925",  label: "◌ Plata Italiana Ley 925" },
                         { value: "perfumeria", label: "🌸 Perfumería" },
 
                       ].map(opt => (
@@ -339,12 +351,20 @@ export default function AdminProducts() {
                       className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-green transition-colors" />
                   </div>}
                   <div className={isPerfumeriaCategory ? "" : "md:col-span-2"}>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">{isPerfumeriaCategory ? "Subcategoría de Perfumería" : "Subcategoría de Joyería"}</label>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">{isPerfumeriaCategory ? "Género" : "Subcategoría de Joyería"}</label>
                     <select value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}
                       className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-green transition-colors bg-white">
                       {getProductSubcategories(selectedCategory?.slug ?? "").map(({ value, label }) => <option key={value || "sin-especificar"} value={value}>{value ? label : "Sin especificar"}</option>)}
                     </select>
                   </div>
+                  {isPerfumeriaCategory && <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Estilo de perfumería</label>
+                    <select value={form.perfumeryStyle} onChange={e => setForm(f => ({ ...f, perfumeryStyle: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brand-green transition-colors bg-white">
+                      {PERFUMERY_STYLES.map(({ value, label }) => <option key={value || "sin-estilo"} value={value}>{label}</option>)}
+                    </select>
+                    <p className="mt-1.5 text-[11px] text-gray-400">Puedes marcar Árabe junto con cualquier género.</p>
+                  </div>}
 
                  {/* ── Variants section ── */}
                   <div className="md:col-span-2">
@@ -389,7 +409,18 @@ export default function AdminProducts() {
                           </button>
                         </div>
                         {selectedSizes.length > 0 && (
-                          <p className="text-xs text-brand-green mt-2 font-medium">✓ Tallas activas: {selectedSizes.sort((a,b)=>Number(a)-Number(b)).join(", ")}</p>
+                          <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Stock por talla</p>
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                              {selectedSizes.sort((a, b) => Number(a) - Number(b)).map((size) => {
+                                const inventory = getVariantInventory("size", size);
+                                return <label key={size} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-semibold text-gray-700">
+                                  <span>Talla {size}</span>
+                                  <input type="number" min="0" value={inventory.stock} onChange={(event) => setVariantStock("size", size, event.target.value)} className="ml-auto w-16 rounded border border-gray-200 px-2 py-1 text-right text-sm focus:border-brand-green focus:outline-none" aria-label={`Stock de talla ${size}`} />
+                                </label>;
+                              })}
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}
@@ -420,7 +451,18 @@ export default function AdminProducts() {
                           </button>
                         </div>
                         {selectedLengths.length > 0 && (
-                          <p className="text-xs text-brand-green mt-2 font-medium">✓ Largos activos: {selectedLengths.sort((a,b)=>Number(a)-Number(b)).join(" cm, ")} cm</p>
+                          <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Stock por largo</p>
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                              {selectedLengths.sort((a, b) => Number(a) - Number(b)).map((length) => {
+                                const inventory = getVariantInventory("length", length);
+                                return <label key={length} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-semibold text-gray-700">
+                                  <span>{length} cm</span>
+                                  <input type="number" min="0" value={inventory.stock} onChange={(event) => setVariantStock("length", length, event.target.value)} className="ml-auto w-16 rounded border border-gray-200 px-2 py-1 text-right text-sm focus:border-brand-green focus:outline-none" aria-label={`Stock de largo ${length} cm`} />
+                                </label>;
+                              })}
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}

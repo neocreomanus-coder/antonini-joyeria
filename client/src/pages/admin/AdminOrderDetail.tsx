@@ -2,6 +2,7 @@ import { useRoute, Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { formatOrderNumber } from "@/lib/paymentFlow";
 import { Button } from "@/components/ui/button";
+import OrderPdfButton from "@/components/OrderPdfButton";
 import { toast } from "sonner";
 import { ChevronLeft, MapPin, Phone, User } from "lucide-react";
 
@@ -62,6 +63,7 @@ export default function AdminOrderDetail() {
           <p className="text-sm text-[oklch(0.52_0.02_60)]">{new Date(order.createdAt).toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end">
+          <OrderPdfButton order={order} className="w-full sm:w-auto" />
           <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${STATUS_COLORS[order.status] ?? ""}`}>
             {STATUS_OPTIONS.find(s => s.value === order.status)?.label}
           </span>
@@ -137,7 +139,8 @@ export default function AdminOrderDetail() {
                 event.preventDefault();
                 const formData = new FormData(event.currentTarget);
                 const guide = String(formData.get("guide") ?? "");
-                const shippingCarrier = String(formData.get("shippingCarrier") ?? "interrapidisimo") === "coordinadora" ? "coordinadora" : "interrapidisimo";
+                const carrierValue = String(formData.get("shippingCarrier") ?? "interrapidisimo");
+                const shippingCarrier = carrierValue === "coordinadora" || carrierValue === "dhl" ? carrierValue : "interrapidisimo";
                 updateShipment.mutate({ id: order.id, status: order.status, shippingCarrier, interrapidisimoGuide: guide || null });
               }}
             >
@@ -146,6 +149,7 @@ export default function AdminOrderDetail() {
                 <select name="shippingCarrier" defaultValue={order.shippingCarrier ?? "interrapidisimo"} className="border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-green">
                   <option value="interrapidisimo">Inter Rapidísimo</option>
                   <option value="coordinadora">Coordinadora</option>
+                  <option value="dhl">DHL</option>
                 </select>
                 <input name="guide" defaultValue={order.interrapidisimoGuide ?? ""} placeholder="Ingresa la guía" className="min-w-0 flex-1 border border-gray-200 px-3 py-2 text-sm outline-none focus:border-brand-green" />
                 <Button type="submit" disabled={updateShipment.isPending} className="shrink-0 bg-brand-green px-3 text-xs text-white hover:bg-brand-green">Guardar</Button>

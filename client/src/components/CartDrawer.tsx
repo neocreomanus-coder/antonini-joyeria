@@ -1,3 +1,4 @@
+import { INVENTORY_ENFORCED } from "@/lib/inventorySettings";
 import { useCart } from "@/contexts/CartContext";
 import { X, ShoppingBag, Minus, Plus, Trash2, Gem, Lock, Tag, ChevronRight } from "lucide-react";
 import { Link } from "wouter";
@@ -108,6 +109,10 @@ export default function CartDrawer() {
                 const unitPrice = getItemUnitPrice(item);
                 const lineTotal = unitPrice * item.quantity;
                 const imgs = item.productImageUrls ?? [];
+                const productStock = Number(item.productStock ?? 0);
+                const availableStock = item.variantId
+                  ? Math.min(productStock, Number(item.variantStock ?? 0))
+                  : productStock;
 
                 return (
                   <div key={item.id} className="flex gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 bg-white transition-colors">
@@ -132,6 +137,9 @@ export default function CartDrawer() {
                       )}
                       {item.productReference && <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Ref. {item.productReference}</p>}
                       <p className="text-[10px] font-bold text-brand-gold mt-0.5">{item.productMaterial || "ORO 18K"}</p>
+                      {INVENTORY_ENFORCED && <p className={`mt-0.5 text-[10px] font-semibold ${availableStock > 0 ? "text-gray-500" : "text-red-500"}`}>
+                        {availableStock > 0 ? `${availableStock} disponible${availableStock === 1 ? "" : "s"}` : "Agotado"}
+                      </p>}
 
                       <div className="flex items-center justify-between mt-2">
                         {/* Qty controls */}
@@ -141,8 +149,8 @@ export default function CartDrawer() {
                             <Minus size={11} />
                           </button>
                           <span className="w-7 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            className="w-7 h-7 flex items-center justify-center hover:bg-gray-50 text-gray-500 transition-colors active:bg-gray-100">
+                          <button onClick={() => updateQuantity(item.id, item.quantity + 1)} disabled={INVENTORY_ENFORCED && item.quantity >= availableStock}
+                            className="w-7 h-7 flex items-center justify-center hover:bg-gray-50 text-gray-500 transition-colors active:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-200 disabled:hover:bg-white">
                             <Plus size={11} />
                           </button>
                         </div>

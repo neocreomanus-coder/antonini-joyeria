@@ -1,24 +1,27 @@
+import { INVENTORY_ENFORCED } from "@/lib/inventorySettings";
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { X, Tag, ShoppingBag, Gem, Sparkles } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { shouldHideWelcomePopup } from "@/lib/popupVisibility";
+import { toast } from "sonner";
 
 export default function WelcomePopup() {
   const [location] = useLocation();
   const [visible, setVisible] = useState(false);
   const { data: config } = trpc.siteConfig.getPopup.useQuery();
-  // Fetch only the configured popup product directly by ID
+  // Fetch the configured popup product directly; never scan a page limited to 100.
   const productId = config?.productId;
   const { data: popupProduct } = trpc.products.getById.useQuery(
     { id: productId ?? 0 },
-    { enabled: !!productId }
+    { enabled: !!productId },
   );
-
   const { addItem } = useCart();
   const [adding, setAdding] = useState(false);
   const isOperationalFlow = shouldHideWelcomePopup(location);
+  const outOfStock = INVENTORY_ENFORCED && Number(popupProduct?.stock ?? 0) <= 0;
+  const requiresVariant = Array.isArray(popupProduct?.variants) && popupProduct.variants.some((variant: any) => variant.type === "size" || variant.type === "length");
 
   useEffect(() => {
     if (!config?.enabled || isOperationalFlow) return;
@@ -35,10 +38,15 @@ export default function WelcomePopup() {
   const close = () => setVisible(false);
 
   const handleAdd = async () => {
-    if (!popupProduct) return;
+    if (!popupProduct || outOfStock || requiresVariant) return;
     setAdding(true);
-    await addItem(popupProduct.id, undefined, 1);
-    setTimeout(() => { setAdding(false); close(); }, 800);
+    try {
+      await addItem(popupProduct.id, undefined, 1);
+      setTimeout(() => { setAdding(false); close(); }, 800);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No fue posible agregar el producto");
+      setAdding(false);
+    }
   };
 
   if (!config?.enabled || isOperationalFlow) return null;
@@ -138,10 +146,19 @@ export default function WelcomePopup() {
 
           {/* CTA buttons */}
           <div className="flex flex-col gap-2.5">
-            {popupProduct ? (
+            {popupProduct && requiresVariant ? (
+              <Link
+                href={`/producto/${popupProduct.slug}`}
+                onClick={close}
+                className="flex items-center justify-center gap-2 w-full bg-brand-green text-white py-3.5 rounded-xl font-bold text-sm hover:bg-brand-green-light transition-colors shadow-sm active:scale-[0.98]"
+              >
+                <ShoppingBag size={16} />
+                Elegir talla o largo
+              </Link>
+            ) : popupProduct ? (
               <button
                 onClick={handleAdd}
-                disabled={adding}
+                disabled={adding || outOfStock}
                 className="flex items-center justify-center gap-2 w-full bg-brand-green text-white py-3.5 rounded-xl font-bold text-sm hover:bg-brand-green-light transition-colors shadow-sm active:scale-[0.98] disabled:opacity-70"
               >
                 {adding ? (
@@ -149,7 +166,7 @@ export default function WelcomePopup() {
                 ) : (
                   <ShoppingBag size={16} />
                 )}
-                {config?.buttonText ?? "Aprovechar oferta"}
+                {outOfStock ? "Producto agotado" : config?.buttonText ?? "Aprovechar oferta"}
               </button>
             ) : (
               <Link

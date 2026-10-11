@@ -4,6 +4,7 @@ import { formatOrderNumber } from "@/lib/paymentFlow";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
+import OrderPdfButton from "@/components/OrderPdfButton";
 import { Package, ChevronLeft, MapPin, Phone } from "lucide-react";
 
 const STATUS_LABELS: Record<string, { label: string; color: string; step: number }> = {
@@ -57,9 +58,12 @@ export default function OrderDetail() {
           <Link href="/mis-pedidos" className="flex items-center gap-1 text-sm text-[oklch(0.52_0.02_60)] hover:text-[oklch(0.62_0.12_75)] mb-6">
             <ChevronLeft className="w-4 h-4" /> Mis pedidos
           </Link>
-          <div className="flex items-center justify-between mb-8">
+          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="font-sans text-3xl font-bold text-[oklch(0.18_0.02_60)]">Pedido {formatOrderNumber(order.orderNumber ?? order.id)}</h1>
-            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${s.color}`}>{s.label}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <OrderPdfButton order={order} />
+              <span className={`px-4 py-2 rounded-full text-sm font-semibold ${s.color}`}>{s.label}</span>
+            </div>
           </div>
 
           {/* Progress tracker */}
@@ -128,7 +132,7 @@ export default function OrderDetail() {
                 Pedido realizado el {new Date(order.createdAt).toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}
               </div>
               <div className="mt-4 border-t border-gold-100 pt-4 text-sm text-[oklch(0.35_0.02_60)]">
-                <p className="font-semibold">Transportadora: {order.shippingCarrier === "coordinadora" ? "Coordinadora" : "Inter Rapidísimo"}</p>
+                <p className="font-semibold">Transportadora: {order.shippingCarrier === "coordinadora" ? "Coordinadora" : order.shippingCarrier === "dhl" ? "DHL" : "Inter Rapidísimo"}</p>
                 <p className="mt-1">Guía: {order.interrapidisimoGuide ?? "Aún no asignada"}</p>
               </div>
             </div>

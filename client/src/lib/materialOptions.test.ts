@@ -7,9 +7,18 @@ describe("materialOptions", () => {
     expect(getMaterialOption("ORO 18K").label).toBe("Oro 18K Nacional");
   });
 
-  it("reconoce los acabados de gemas solicitados", () => {
+  it("reconoce las gemas solicitadas con sus etiquetas comerciales", () => {
     expect(getMaterialOption("ESMERALDAS").label).toBe("Esmeraldas");
     expect(getMaterialOption("MOISSANITAS").label).toBe("Moissanitas");
+    expect(getMaterialOption("RUBÍ").label).toBe("Rubí");
+    expect(getMaterialOption("DIAMANTES").label).toBe("Diamantes");
+    expect(getMaterialOption("DIAMANTE NEGRO").label).toBe("Diamante Negro");
+    expect(getMaterialOption("DIAMANTE AZUL").label).toBe("Diamante Azul");
+    expect(getMaterialOption("DIAMANTE AMARILLO").label).toBe("Diamante Amarillo");
+    expect(getMaterialOption("ÓPALO").label).toBe("Ópalo");
+    expect(getMaterialOption("CIRCÓN SUIZO").label).toBe("Circón Suizo");
+    expect(getMaterialOption("AMATISTA").label).toBe("Amatista");
+    expect(getMaterialOption("ZAFIRO").label).toBe("Zafiro");
   });
 
   it("reconoce Oro Blanco y Oro Rosa como acabados seleccionables", () => {
@@ -31,6 +40,15 @@ describe("materialOptions", () => {
       "ORO 18K ITALIANO",
       "ESMERALDAS",
       "MOISSANITAS",
+      "RUBÍ",
+      "DIAMANTES",
+      "DIAMANTE NEGRO",
+      "DIAMANTE AZUL",
+      "DIAMANTE AMARILLO",
+      "ÓPALO",
+      "CIRCÓN SUIZO",
+      "AMATISTA",
+      "ZAFIRO",
     ]));
   });
 });

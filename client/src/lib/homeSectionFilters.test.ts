@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAssignedJewelryProducts, getAssignedTrendingProducts, isJewelryProduct } from "./homeSectionFilters";
+import { getAssignedItalianSilverProducts, getAssignedJewelryProducts, getAssignedTrendingProducts, isJewelryProduct } from "./homeSectionFilters";
 
 describe("isJewelryProduct", () => {
   it("excluye fragancias de las secciones de precio de joyería", () => {
@@ -22,6 +22,17 @@ describe("isJewelryProduct", () => {
     ];
     expect(getAssignedJewelryProducts(products, "under300k").map(product => product.id)).toEqual([1]);
     expect(getAssignedJewelryProducts(products, "under800k").map(product => product.id)).toEqual([2]);
+  });
+
+  it("incluye en Plata Italiana Ley 925 solamente joyas de plata asignadas a esa sección", () => {
+    const products = [
+      { id: 1, homeSection: "silver925", material: "PLATA LEY 925", materials: ["PLATA LEY 925"] },
+      { id: 2, homeSection: "silver925", material: "ORO 18K NACIONAL", materials: ["ORO 18K NACIONAL"] },
+      { id: 3, homeSection: "under300k", material: "PLATA LEY 925", materials: ["PLATA LEY 925"] },
+      { id: 4, homeSection: "silver925", material: "PLATA LEY 925", volumeMl: 100 },
+    ];
+
+    expect(getAssignedItalianSilverProducts(products).map(product => product.id)).toEqual([1]);
   });
 
   it("solo incluye productos marcados manualmente como tendencia", () => {

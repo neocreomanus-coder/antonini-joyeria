@@ -1,0 +1,1 @@
+ALTER TABLE `orders` ADD `inventoryReserved` boolean DEFAULT false NOT NULL;

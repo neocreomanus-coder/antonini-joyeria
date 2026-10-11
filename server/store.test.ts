@@ -115,11 +115,11 @@ vi.mock("./db", () => ({
   subscribeNewsletter: vi.fn().mockResolvedValue(undefined),
   getAdminStats: vi.fn().mockResolvedValue({ totalOrders: 5, totalRevenue: "1250000", pendingOrders: 2, totalProducts: 13 }),
   storagePut: vi.fn().mockResolvedValue({ url: "/manus-storage/test.png", key: "test.png" }),
-  getPromoCarouselConfig: vi.fn().mockResolvedValue({
-    intervalMs: 6000,
-    slides: [{ id: "promo-1", mediaUrl: "/manus-storage/promo.mp4", mediaType: "video", ctaLabel: "Ver Colección", ctaHref: "/catalogo" }],
+  getHeroConfig: vi.fn().mockResolvedValue({
+    intervalMs: 6500,
+    slides: [{ id: "hero-video", mediaUrl: "/manus-storage/hero.mp4", mediaType: "video" }],
   }),
-  updatePromoCarouselConfig: vi.fn().mockResolvedValue({ success: true }),
+  updateHeroCarouselConfig: vi.fn().mockResolvedValue({ success: true }),
   getDeliveryPhotosConfig: vi.fn().mockResolvedValue({
     photos: [{ id: "delivery-1", imageUrl: "/manus-storage/delivery.jpg", alt: "Cliente feliz" }],
   }),
@@ -159,6 +159,18 @@ describe("products router", () => {
     const caller = appRouter.createCaller(makePublicCtx());
     await caller.products.list({ gender: "ninos" });
     expect(db.getProducts).toHaveBeenLastCalledWith({ gender: "ninos" });
+  });
+
+  it("accepts the independent Árabe perfumery filter", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await caller.products.list({ perfumeryStyle: "arabe" });
+    expect(db.getProducts).toHaveBeenLastCalledWith({ perfumeryStyle: "arabe" });
+  });
+
+  it("combines the Árabe style with a perfumery gender", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await caller.products.list({ gender: "masculino", perfumeryStyle: "arabe" });
+    expect(db.getProducts).toHaveBeenLastCalledWith({ gender: "masculino", perfumeryStyle: "arabe" });
   });
 
   it("getBySlug returns product with variants", async () => {
@@ -230,6 +242,22 @@ describe("products router", () => {
     })).resolves.toMatchObject({ success: true });
   });
 
+  it("allows an Árabe perfume to also be Unisex", async () => {
+    const adminCaller = appRouter.createCaller(makeCtx("admin"));
+    await expect(adminCaller.products.create({
+      name: "Fragancia Árabe Unisex",
+      slug: "fragancia-arabe-unisex",
+      basePrice: "180000",
+      categoryId: 1,
+      gender: "unisex",
+      perfumeryStyle: "arabe",
+    })).resolves.toMatchObject({ success: true });
+    expect(db.createProduct).toHaveBeenLastCalledWith(expect.objectContaining({
+      gender: "unisex",
+      perfumeryStyle: "arabe",
+    }));
+  });
+
   it("allows administrators to save several product materials", async () => {
     const adminCaller = appRouter.createCaller(makeCtx("admin"));
     const materials = ["ORO 18K NACIONAL", "ESMERALDAS"];
@@ -243,6 +271,23 @@ describe("products router", () => {
     expect(db.createProduct).toHaveBeenLastCalledWith(expect.objectContaining({ materials }));
   });
 
+  it("allows administrators to save a custom stone with its color", async () => {
+    const adminCaller = appRouter.createCaller(makeCtx("admin"));
+    await expect(adminCaller.products.create({
+      name: "Anillo con piedra personalizada",
+      slug: "anillo-piedra-personalizada",
+      basePrice: "950000",
+      categoryId: 1,
+      customStoneName: "Turmalina Paraíba",
+      customStoneColor: "#31d1d2",
+    })).resolves.toMatchObject({ success: true });
+
+    expect(db.createProduct).toHaveBeenLastCalledWith(expect.objectContaining({
+      customStoneName: "Turmalina Paraíba",
+      customStoneColor: "#31d1d2",
+    }));
+  });
+
   it("allows administrators to delete a product", async () => {
     const adminCaller = appRouter.createCaller(makeCtx("admin"));
     await adminCaller.products.delete({ id: 99 });
@@ -250,25 +295,34 @@ describe("products router", () => {
   });
 });
 
-describe("promo carousel router", () => {
-  const carousel = {
-    intervalMs: 6000,
-    slides: [{ id: "promo-1", mediaUrl: "/manus-storage/promo.mp4", mediaType: "video" as const, ctaLabel: "Ver Colección", ctaHref: "/catalogo" }],
+describe("hero router", () => {
+  const videoHero = {
+    intervalMs: 6500,
+    slides: [{ id: "hero-video", mediaUrl: "/manus-storage/hero.mp4", mediaType: "video" as const }],
   };
 
-  it("returns the promotional carousel publicly", async () => {
+  it("returns only the configured video for the public hero", async () => {
     const caller = appRouter.createCaller(makePublicCtx());
-    const result = await caller.siteConfig.getPromoCarousel();
-    expect(result.slides[0]).toMatchObject({ mediaType: "video", ctaLabel: "Ver Colección" });
+    await expect(caller.siteConfig.getHero()).resolves.toMatchObject(videoHero);
   });
 
-  it("requires admin access to update promotional carousel slides", async () => {
-    const userCaller = appRouter.createCaller(makeCtx("user"));
-    await expect(userCaller.siteConfig.updatePromoCarousel(carousel)).rejects.toThrow();
-
+  it("allows administrators to save one fixed video and rejects invalid media", async () => {
     const adminCaller = appRouter.createCaller(makeCtx("admin"));
-    await expect(adminCaller.siteConfig.updatePromoCarousel(carousel)).resolves.toMatchObject({ success: true });
-    expect(db.updatePromoCarouselConfig).toHaveBeenLastCalledWith(carousel);
+    await expect(adminCaller.siteConfig.updateHeroCarousel(videoHero)).resolves.toMatchObject({ success: true });
+    expect(db.updateHeroCarouselConfig).toHaveBeenLastCalledWith(videoHero);
+
+    await expect(adminCaller.siteConfig.updateHeroCarousel({
+      intervalMs: 6500,
+      slides: [{ id: "hero-image", mediaUrl: "/manus-storage/hero.jpg", mediaType: "image" }],
+    })).rejects.toThrow();
+
+    await expect(adminCaller.siteConfig.updateHeroCarousel({
+      intervalMs: 6500,
+      slides: [
+        { id: "hero-video-1", mediaUrl: "/manus-storage/hero-1.mp4", mediaType: "video" },
+        { id: "hero-video-2", mediaUrl: "/manus-storage/hero-2.mp4", mediaType: "video" },
+      ],
+    })).rejects.toThrow();
   });
 });
 
@@ -311,6 +365,23 @@ describe("promo codes router", () => {
   it("restringe la administración de códigos a administradores", async () => {
     const userCaller = appRouter.createCaller(makeCtx("user"));
     await expect(userCaller.promoCodes.adminList()).rejects.toThrow();
+  });
+});
+
+describe("inventario en carrito", () => {
+  it("envía la sesión al modificar cantidades y no permite actualizar un carrito ajeno", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await caller.cart.updateQuantity({ id: 99, quantity: 2, sessionId: "sesion-inventario" });
+    expect(db.updateCartItemQuantity).toHaveBeenLastCalledWith({ id: 99, quantity: 2, sessionId: "sesion-inventario", userId: undefined });
+  });
+
+  it("expone una falta de existencias como error corregible para el cliente", async () => {
+    vi.mocked(db.addCartItem).mockRejectedValueOnce(new Error("No hay existencias suficientes para uno de los productos seleccionados. Actualiza tu carrito e inténtalo de nuevo."));
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.cart.add({ productId: 1, quantity: 1, sessionId: "sesion-inventario" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringContaining("existencias suficientes"),
+    });
   });
 });
 
@@ -370,6 +441,15 @@ describe("orders router", () => {
       popupDiscountPercent: 20, popupDiscountAmount: "50000", promoCode: "AHORRA15", promoDiscountPercent: 15, promoDiscountAmount: "37500", total: "162500",
     }));
     expect(notifyTelegramAboutOrderMock).toHaveBeenLastCalledWith(expect.objectContaining({ popupDiscountPercent: 20, popupDiscountAmount: "50000", promoCode: "AHORRA15", promoDiscountAmount: "37500" }));
+  });
+
+  it("no genera el pedido cuando la reserva de stock falla", async () => {
+    vi.mocked(db.createOrder).mockRejectedValueOnce(new Error("No hay existencias suficientes para uno de los productos seleccionados. Actualiza tu carrito e inténtalo de nuevo."));
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.orders.create(wompiOrderInput)).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringContaining("existencias suficientes"),
+    });
   });
 
   it("consulta la información pública de pago solo mediante token", async () => {
@@ -452,6 +532,9 @@ describe("orders router", () => {
     const adminCaller = appRouter.createCaller(makeCtx("admin"));
     await expect(adminCaller.orders.updateShipment({ id: 1, status: "despachado", shippingCarrier: "coordinadora", interrapidisimoGuide: "123456789" })).resolves.not.toThrow();
     expect(db.updateOrderShipment).toHaveBeenLastCalledWith(1, expect.objectContaining({ status: "despachado", shippingCarrier: "coordinadora", interrapidisimoGuide: "123456789" }));
+
+    await expect(adminCaller.orders.updateShipment({ id: 1, status: "despachado", shippingCarrier: "dhl", interrapidisimoGuide: "DHL-123456" })).resolves.not.toThrow();
+    expect(db.updateOrderShipment).toHaveBeenLastCalledWith(1, expect.objectContaining({ status: "despachado", shippingCarrier: "dhl", interrapidisimoGuide: "DHL-123456" }));
   });
 });
 
