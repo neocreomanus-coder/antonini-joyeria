@@ -722,7 +722,18 @@ export async function createOrder(data: {
   userId?: number; guestEmail?: string; total: string; subtotal: string;
   popupDiscountPercent?: number; popupDiscountAmount?: string;
   promoCode?: string; promoDiscountPercent?: number; promoDiscountAmount?: string;
-  shippingAddress: { fullName: string; address: string; city: string; department: string; phone: string; notes?: string };
+  shippingAddress: {
+    fullName: string;
+    address: string;
+    addressLine2?: string;
+    city: string;
+    department: string;
+    stateProvince?: string;
+    postalCode?: string;
+    country?: string;
+    phone: string;
+    notes?: string;
+  };
   paymentMethod: "contraentrega" | "wompi";
   stripePaymentIntentId?: string;
   items: Array<{ productId: number; variantId?: number; quantity: number; unitPrice: string; productSnapshot: { name: string; material: string; imageUrl: string; reference?: string; variantLabel?: string } }>;
@@ -1016,9 +1027,9 @@ export async function getPopupConfig() {
 
 export async function getHeroConfig() {
   const db = await getDb();
-  if (!db) return { videoUrl: null, fallbackImage: null, title: null, subtitle: null, description: null, intervalMs: 6500, slides: [] as HeroCarouselSlide[] };
+  if (!db) return { videoUrl: null, posterUrl: null, fallbackImage: null, title: null, subtitle: null, description: null, intervalMs: 6500, slides: [] as HeroCarouselSlide[] };
   const rows = await db.select().from(siteConfig).where(
-    sql`config_key IN ('hero_video_url','hero_fallback_image','hero_title','hero_subtitle','hero_description','hero_carousel_config')`
+    sql`config_key IN ('hero_video_url','hero_poster_url','hero_fallback_image','hero_title','hero_subtitle','hero_description','hero_carousel_config')`
   );
   const map: Record<string, string | null> = {};
   for (const row of rows) map[row.configKey] = row.configValue ?? null;
@@ -1039,7 +1050,10 @@ export async function getHeroConfig() {
     } catch { /* Se conservan las diapositivas heredadas si el valor almacenado no es válido. */ }
   }
   return {
-    videoUrl: map["hero_video_url"] ?? null,
+    // Keep the saved video from the earlier carousel when no explicit fixed-video key exists.
+    // Do not discard users' existing media after the upgrade.
+    videoUrl: map["hero_video_url"] || carousel.slides.find((slide) => slide.mediaType === "video")?.mediaUrl || null,
+    posterUrl: map["hero_poster_url"] ?? null,
     fallbackImage: map["hero_fallback_image"] ?? null,
     title: map["hero_title"] ?? "Joyas que cuentan tu historia",
     subtitle: map["hero_subtitle"] ?? "Exportadores & Mayoristas · Oro 18K Certificado",
@@ -1071,44 +1085,6 @@ export type HeroCarouselConfig = {
 
 export async function updateHeroCarouselConfig(config: HeroCarouselConfig) {
   return updateSiteConfig("hero_carousel_config", JSON.stringify(config));
-}
-
-export type PromoCarouselSlide = {
-  id: string;
-  mediaUrl: string;
-  mediaType: "image" | "video";
-  ctaLabel: string;
-  ctaHref: string;
-};
-
-export type PromoCarouselConfig = {
-  intervalMs: number;
-  slides: PromoCarouselSlide[];
-};
-
-const defaultPromoCarouselConfig: PromoCarouselConfig = {
-  intervalMs: 6000,
-  slides: [],
-};
-
-export async function getPromoCarouselConfig(): Promise<PromoCarouselConfig> {
-  const db = await getDb();
-  if (!db) return defaultPromoCarouselConfig;
-  const rows = await db.select().from(siteConfig).where(eq(siteConfig.configKey, "promo_carousel_config")).limit(1);
-  if (!rows[0]?.configValue) return defaultPromoCarouselConfig;
-  try {
-    const parsed = JSON.parse(rows[0].configValue) as Partial<PromoCarouselConfig>;
-    return {
-      intervalMs: Math.min(15000, Math.max(3000, Number(parsed.intervalMs) || 6000)),
-      slides: Array.isArray(parsed.slides) ? parsed.slides : [],
-    };
-  } catch {
-    return defaultPromoCarouselConfig;
-  }
-}
-
-export async function updatePromoCarouselConfig(config: PromoCarouselConfig) {
-  return updateSiteConfig("promo_carousel_config", JSON.stringify(config));
 }
 
 // ── Delivery Photos ───────────────────────────────────────────────────────────

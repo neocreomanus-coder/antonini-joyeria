@@ -1,4 +1,4 @@
-export const WOMPI_PAYMENT_URL = "https://checkout.wompi.co/l/VPOS_NHrLJj";
+export const WOMPI_PAYMENT_URL = "https://checkout.wompi.co/l/VPOS_Sy387S";
 export const WOMPI_PAYMENT_BUTTON_IMAGE = "/manus-storage/wompi-payment-button_9e76ada3.webp";
 export const STORE_WHATSAPP_NUMBER = "57316930853";
 export const PAYMENT_RESERVATION_MS = 10 * 60 * 1000;

@@ -116,10 +116,12 @@ vi.mock("./db", () => ({
   getAdminStats: vi.fn().mockResolvedValue({ totalOrders: 5, totalRevenue: "1250000", pendingOrders: 2, totalProducts: 13 }),
   storagePut: vi.fn().mockResolvedValue({ url: "/manus-storage/test.png", key: "test.png" }),
   getHeroConfig: vi.fn().mockResolvedValue({
+    videoUrl: "/manus-storage/hero.mp4",
     intervalMs: 6500,
     slides: [{ id: "hero-video", mediaUrl: "/manus-storage/hero.mp4", mediaType: "video" }],
   }),
   updateHeroCarouselConfig: vi.fn().mockResolvedValue({ success: true }),
+  updateSiteConfig: vi.fn().mockResolvedValue({ success: true }),
   getDeliveryPhotosConfig: vi.fn().mockResolvedValue({
     photos: [{ id: "delivery-1", imageUrl: "/manus-storage/delivery.jpg", alt: "Cliente feliz" }],
   }),
@@ -301,6 +303,13 @@ describe("hero router", () => {
     slides: [{ id: "hero-video", mediaUrl: "/manus-storage/hero.mp4", mediaType: "video" as const }],
   };
 
+  it("permite guardar un único video mediante la nueva ruta", async () => {
+    const adminCaller = appRouter.createCaller(makeCtx("admin"));
+    await expect(adminCaller.siteConfig.updateHeroVideo({ videoUrl: "/manus-storage/hero.mp4" }))
+      .resolves.toMatchObject({ success: true });
+    expect(db.updateSiteConfig).toHaveBeenLastCalledWith("hero_video_url", "/manus-storage/hero.mp4");
+  });
+
   it("returns only the configured video for the public hero", async () => {
     const caller = appRouter.createCaller(makePublicCtx());
     await expect(caller.siteConfig.getHero()).resolves.toMatchObject(videoHero);
@@ -429,6 +438,27 @@ describe("orders router", () => {
     const result = await caller.orders.create({ ...wompiOrderInput, paymentMethod: "contraentrega" });
     expect(result).toMatchObject({ orderId: 42, orderNumber: "ANT-001001", paymentMethod: "contraentrega" });
     expect(db.createOrder).toHaveBeenLastCalledWith(expect.objectContaining({ paymentMethod: "contraentrega" }));
+  });
+
+  it("acepta una dirección internacional sin perder provincia o código postal", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.orders.create({
+      ...wompiOrderInput,
+      shippingAddress: {
+        fullName: "Sofía Torres",
+        address: "500 Fifth Avenue",
+        addressLine2: "Suite 10",
+        city: "New York",
+        department: "New York",
+        stateProvince: "New York",
+        postalCode: "10018",
+        country: "Estados Unidos",
+        phone: "+1 212 555 0100",
+      },
+    })).resolves.toMatchObject({ orderId: 42 });
+    expect(db.createOrder).toHaveBeenLastCalledWith(expect.objectContaining({
+      shippingAddress: expect.objectContaining({ country: "Estados Unidos", postalCode: "10018" }),
+    }));
   });
 
   it("guarda el código y descuento verificados al crear un pedido", async () => {

@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { formatOrderNumber } from "@/lib/paymentFlow";
 import { Button } from "@/components/ui/button";
 import OrderPdfButton from "@/components/OrderPdfButton";
+import { formatShippingAddress } from "@/lib/shippingAddress";
 import { toast } from "sonner";
 import { ChevronLeft, MapPin, Phone, User } from "lucide-react";
 
@@ -127,8 +128,7 @@ export default function AdminOrderDetail() {
             <h2 className="font-sans text-lg font-semibold text-[oklch(0.18_0.02_60)] mb-4 flex items-center gap-2"><MapPin className="w-4 h-4 text-[oklch(0.62_0.12_75)]" /> Dirección de envío</h2>
             {addr && (
               <div className="space-y-1 text-sm text-[oklch(0.35_0.02_60)]">
-                <p>{addr.address}</p>
-                <p>{addr.city}, {addr.department}</p>
+                <p>{formatShippingAddress(addr)}</p>
                 <div className="flex items-center gap-1 mt-2"><Phone className="w-3 h-3 text-[oklch(0.62_0.12_75)]" /><span>{addr.phone}</span></div>
                 {addr.notes && <p className="text-[oklch(0.52_0.02_60)] italic mt-1">{addr.notes}</p>}
               </div>

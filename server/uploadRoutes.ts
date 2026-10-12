@@ -1,5 +1,9 @@
 import { Request, Response, Application } from "express";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
+import os from "node:os";
+import { rm } from "node:fs/promises";
+import { queueHeroVideo, heroJobStatus } from "./heroMedia";
 import { storagePut } from "./storage";
 import { getUserByOpenId, updateSiteConfig } from "./db";
 import { sdk } from "./_core/sdk";
@@ -13,6 +17,16 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     cb(null, allowedMediaTypes.includes(file.mimetype));
   },
+});
+
+// Upload large hero videos to disk; never buffer a 60–500 MB video in Node memory.
+const heroUpload = multer({
+  storage: multer.diskStorage({
+    destination: os.tmpdir(),
+    filename: (_req, _file, cb) => cb(null, `antonini-hero-upload-${randomUUID()}`),
+  }),
+  limits: { fileSize: 500 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, file.mimetype.startsWith("video/")),
 });
 
 async function requireAdmin(req: Request, res: Response): Promise<boolean> {
@@ -29,20 +43,25 @@ async function requireAdmin(req: Request, res: Response): Promise<boolean> {
 }
 
 export function registerUploadRoutes(app: Application) {
-  // Upload hero video — direct multipart, no base64 corruption
-  app.post("/api/upload/hero-video", upload.single("video"), async (req: Request, res: Response) => {
-    if (!await requireAdmin(req, res)) return;
-    if (!req.file) { res.status(400).json({ error: "No se recibió ningún archivo" }); return; }
-    try {
-      const safeName = req.file.originalname.replace(/[^a-z0-9._-]/gi, "_");
-      const key = `hero-videos/${Date.now()}-${safeName}`;
-      const { url } = await storagePut(key, req.file.buffer, req.file.mimetype);
-      await updateSiteConfig("hero_video_url", url);
-      res.json({ success: true, url });
-    } catch (err) {
-      console.error("[upload/hero-video]", err);
-      res.status(500).json({ error: "Error al subir el video" });
+  // Authenticate before accepting potentially large multipart uploads.
+  app.post("/api/upload/hero-video", async (req, res, next) => {
+    if (await requireAdmin(req, res)) next();
+  }, heroUpload.single("video"), async (req: Request, res: Response) => {
+    if (!req.file?.path) { res.status(400).json({ error: "Selecciona un archivo de video" }); return; }
+    const jobId = queueHeroVideo(req.file.path);
+    if (!jobId) {
+      await rm(req.file.path, { force: true });
+      res.status(409).json({ error: "Ya se está optimizando otro video. Espera a que finalice." });
+      return;
     }
+    res.status(202).json({ jobId, state: "processing" });
+  });
+
+  app.get("/api/upload/hero-video/status/:jobId", async (req: Request, res: Response) => {
+    if (!await requireAdmin(req, res)) return;
+    const job = heroJobStatus(String(req.params.jobId));
+    if (!job) { res.status(404).json({ error: "Proceso no encontrado. Vuelve a subir el video." }); return; }
+    res.json(job);
   });
 
   // Upload hero fallback image
@@ -73,22 +92,6 @@ export function registerUploadRoutes(app: Application) {
     } catch (err) {
       console.error("[upload/product-image]", err);
       res.status(500).json({ error: "No fue posible subir la imagen. Inténtalo de nuevo." });
-    }
-  });
-
-  // Upload a single media asset for the independent promo carousel
-  app.post("/api/upload/promo-carousel-media", upload.single("media"), async (req: Request, res: Response) => {
-    if (!await requireAdmin(req, res)) return;
-    if (!req.file) { res.status(400).json({ error: "No se recibió ningún archivo" }); return; }
-    try {
-      const safeName = req.file.originalname.replace(/[^a-z0-9._-]/gi, "_");
-      const mediaType = req.file.mimetype.startsWith("video/") ? "video" : "image";
-      const key = `promo-carousel/${mediaType}s/${Date.now()}-${safeName}`;
-      const { url } = await storagePut(key, req.file.buffer, req.file.mimetype);
-      res.json({ success: true, url, mediaType });
-    } catch (err) {
-      console.error("[upload/promo-carousel-media]", err);
-      res.status(500).json({ error: "Error al subir el medio promocional" });
     }
   });
 

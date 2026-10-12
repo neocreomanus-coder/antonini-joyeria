@@ -1,4 +1,5 @@
 import { formatOrderNumber } from "./paymentFlow";
+import { formatShippingAddress } from "./shippingAddress";
 
 export type OrderPdfData = {
   id: number;
@@ -57,8 +58,12 @@ type PdfAddress = {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  addressLine2?: string | null;
   city?: string | null;
   department?: string | null;
+  stateProvince?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
   notes?: string | null;
 };
 
@@ -175,7 +180,7 @@ export async function downloadOrderPdf(order: OrderPdfData) {
   line("Cliente", address?.fullName);
   line("Correo", order.guestEmail ?? address?.email);
   line("Teléfono", address?.phone);
-  line("Dirección", [address?.address, address?.city, address?.department].filter(Boolean).join(", "));
+  line("Dirección", formatShippingAddress(address));
   line("Transportadora", getShippingCarrierLabel(order.shippingCarrier));
   line("Guía", order.interrapidisimoGuide ?? "Aún no asignada");
   if (address?.notes || order.notes) line("Notas", address?.notes ?? order.notes);

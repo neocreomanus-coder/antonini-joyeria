@@ -28,7 +28,6 @@ import AdminHero from "./pages/admin/AdminHero";
 import CartDrawer from "./components/CartDrawer";
 import WelcomePopup from "./components/WelcomePopup";
 import AdminPopup from "./pages/admin/AdminPopup";
-import AdminPromoCarousel from "./pages/admin/AdminPromoCarousel";
 import AdminDeliveryPhotos from "./pages/admin/AdminDeliveryPhotos";
 import AdminPromoCodes from "./pages/admin/AdminPromoCodes";
 
@@ -42,7 +41,6 @@ function AdminRoutes() {
         <Route path="/admin/pedidos/:orderNumber" component={AdminOrderDetail} />
         <Route path="/admin/pedidos" component={AdminOrders} />
         <Route path="/admin/hero" component={AdminHero} />
-        <Route path="/admin/promociones" component={AdminPromoCarousel} />
         <Route path="/admin/popup" component={AdminPopup} />
         <Route path="/admin/entregas" component={AdminDeliveryPhotos} />
         <Route path="/admin/codigos-promocionales" component={AdminPromoCodes} />

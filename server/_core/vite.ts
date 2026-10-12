@@ -6,6 +6,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
 import { applySeoToHtml, getSeoMeta } from "../seo";
+import { injectHeroBootstrap } from "../heroBootstrap";
 
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
@@ -67,7 +68,7 @@ export function serveStatic(app: Express) {
       const indexPath = path.resolve(distPath, "index.html");
       const template = await fs.promises.readFile(indexPath, "utf-8");
       const seo = await getSeoMeta(req.originalUrl);
-      const page = applySeoToHtml(template, seo);
+      const page = await injectHeroBootstrap(applySeoToHtml(template, seo), req.originalUrl);
 
       res
         .status(seo.statusCode ?? 200)

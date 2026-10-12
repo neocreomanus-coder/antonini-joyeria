@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useCart } from "@/contexts/CartContext";
-import { getNextCarouselIndex } from "@/lib/promoCarousel";
 import { getDisplayProductPrice, getPopupOfferForProduct } from "@/lib/productPricing";
 import { getAssignedItalianSilverProducts, getAssignedJewelryProducts, getAssignedTrendingProducts } from "@/lib/homeSectionFilters";
 import { getHomeProductCarouselOffset } from "@/lib/homeProductCarousel";
@@ -15,38 +14,22 @@ import Footer from "@/components/Footer";
 
 // ─── Hero Section — video exclusivo ────────────────────────────────────────────
 function HeroSection() {
-  const { data: heroConfig } = trpc.siteConfig.getHero.useQuery();
+  const { data: heroConfig } = trpc.siteConfig.getHero.useQuery(undefined, { refetchOnWindowFocus: false });
+  const initialMedia = (window as Window & {
+    __ANTONINI_HERO_MEDIA__?: { videoUrl: string | null; posterUrl: string | null };
+  }).__ANTONINI_HERO_MEDIA__;
+  const videoUrl = heroConfig?.videoUrl ?? initialMedia?.videoUrl ?? null;
+  const posterUrl = heroConfig?.posterUrl ?? initialMedia?.posterUrl ?? null;
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoReady, setVideoReady] = useState(false);
-  const videoSlide = heroConfig?.slides?.find(slide => slide.mediaType === "video" && Boolean(slide.mediaUrl));
+  const [playing, setPlaying] = useState(false);
 
-  useEffect(() => {
-    setVideoReady(false);
-  }, [videoSlide?.id, videoSlide?.mediaUrl]);
-
-  useEffect(() => {
-    if (!videoSlide?.mediaUrl) return;
-    const existingPreload = document.querySelector<HTMLLinkElement>('link[data-antonini-hero-video]');
-    if (existingPreload?.href === new URL(videoSlide.mediaUrl, window.location.origin).href) return;
-
-    existingPreload?.remove();
-    const preload = document.createElement("link");
-    preload.rel = "preload";
-    preload.as = "video";
-    preload.href = videoSlide.mediaUrl;
-    preload.setAttribute("data-antonini-hero-video", "true");
-    preload.setAttribute("fetchpriority", "high");
-    document.head.appendChild(preload);
-
-    return () => preload.remove();
-  }, [videoSlide?.mediaUrl]);
+  useEffect(() => { setPlaying(false); }, [videoUrl]);
 
   const startPlayback = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = true;
-    void video.play().catch(() => {
-      // El video permanece invisible hasta que el navegador permita reproducirlo.
+    if (!videoRef.current) return;
+    videoRef.current.muted = true;
+    void videoRef.current.play().catch(() => {
+      // If autoplay is blocked, the matching first-frame poster remains visible.
     });
   };
 
@@ -56,30 +39,30 @@ function HeroSection() {
       style={{ height: "100svh", minHeight: "500px" }}
       aria-label="Video principal de Antonini Joyería"
     >
-      {!videoSlide && (
-        <img
-          src={heroConfig?.fallbackImage || heroConfig?.slides?.find(slide => slide.mediaType === "image")?.mediaUrl || "/manus-storage/hero-antonini-modelo_c203840d.jpg"}
-          alt="Antonini Joyería"
-          className="absolute inset-0 h-full w-full object-cover object-center"
-        />
-      )}
-      {videoSlide && (
+      {videoUrl && (
         <video
           ref={videoRef}
-          key={videoSlide.id}
-          src={videoSlide.mediaUrl}
+          key={videoUrl}
+          src={videoUrl}
+          poster={posterUrl ?? undefined}
           autoPlay
           loop
           muted
           playsInline
           preload="auto"
           onCanPlay={startPlayback}
-          onLoadedData={() => {
-            startPlayback();
-            setVideoReady(true);
-          }}
-          onPlaying={() => setVideoReady(true)}
-          className={`absolute inset-0 h-full w-full object-cover object-center ${videoReady ? "opacity-100" : "opacity-0"}`}
+          onPlaying={() => setPlaying(true)}
+          onError={() => setPlaying(false)}
+          className="absolute inset-0 h-full w-full object-cover object-center"
+        />
+      )}
+      {posterUrl && !playing && (
+        <img
+          src={posterUrl}
+          alt=""
+          aria-hidden="true"
+          fetchPriority="high"
+          className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-cover object-center"
         />
       )}
       <div className="absolute inset-0 z-10 flex items-end pb-14 md:pb-16">
@@ -87,55 +70,6 @@ function HeroSection() {
           <Link href="/catalogo" className="inline-flex items-center bg-black/80 px-7 py-3.5 text-sm font-semibold uppercase tracking-widest text-white shadow-lg hover:bg-black">
             COMPRAR AHORA
           </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PromoCarousel() {
-  const { data: config } = trpc.siteConfig.getPromoCarousel.useQuery();
-  const slides = config?.slides ?? [];
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  useEffect(() => {
-    setActiveIndex(0);
-    if (slides.length < 2) return;
-    const timer = window.setInterval(() => setActiveIndex(current => getNextCarouselIndex(current, slides.length)), config?.intervalMs ?? 6000);
-    return () => window.clearInterval(timer);
-  }, [slides.length, config?.intervalMs]);
-
-  if (slides.length === 0) return null;
-  const activeSlide = slides[activeIndex % slides.length];
-
-  return (
-    <section id="promociones" className="relative isolate min-h-[430px] overflow-hidden bg-gray-100 md:min-h-[560px]" aria-label="Promociones destacadas">
-      <div className="absolute inset-0">
-        {activeSlide.mediaType === "video" ? (
-          <video key={activeSlide.id} src={activeSlide.mediaUrl} autoPlay loop muted playsInline preload="metadata" className="h-full w-full object-cover" />
-        ) : (
-          <img key={activeSlide.id} src={activeSlide.mediaUrl} alt="Promoción Antonini" className="h-full w-full object-cover" />
-        )}
-      </div>
-      <div className="relative flex min-h-[430px] items-end md:min-h-[560px]">
-        <div className="container flex items-end justify-between gap-5 py-10 md:py-14">
-          <Link href={activeSlide.ctaHref} className="inline-flex items-center bg-black/85 px-7 py-3.5 text-sm font-semibold uppercase tracking-widest text-white shadow-lg transition-colors hover:bg-black active:scale-95">
-            {activeSlide.ctaLabel}
-          </Link>
-          {slides.length > 1 && (
-            <div className="flex items-center gap-2" aria-label="Indicador de diapositivas">
-              {slides.map((slide, index) => (
-                <button
-                  key={slide.id}
-                  type="button"
-                  aria-label={`Mostrar diapositiva ${index + 1}`}
-                  aria-current={index === activeIndex ? "true" : undefined}
-                  onClick={() => setActiveIndex(index)}
-                  className={`h-2.5 w-2.5 shrink-0 rounded-full border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fff1b8] ${index === activeIndex ? "border-[#fff1b8] bg-[radial-gradient(circle_at_30%_25%,#fff6c8_0%,#e6c266_42%,#b88321_100%)] shadow-[0_0_10px_rgba(217,176,69,0.65)]" : "border-[#d8b861]/90 bg-[#f6e6b7]/35 hover:bg-[#e1c168]"}`}
-                />
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </section>
@@ -638,7 +572,6 @@ export default function Home() {
         </div>
       </section>
 
-      <PromoCarousel />
       <Footer />
 
       {/* ── WHATSAPP FLOATING BUTTON ── */}

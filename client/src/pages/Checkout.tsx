@@ -10,6 +10,8 @@ import Footer from "@/components/Footer";
 import { toast } from "sonner";
 import { ShoppingBag, Lock, Truck, Shield, Gem, Tag, Check, X } from "lucide-react";
 import { WOMPI_PAYMENT_BUTTON_IMAGE } from "@/lib/paymentFlow";
+import PayPalHostedButton from "@/components/PayPalHostedButton";
+import { COLOMBIA_DEPARTMENTS, OTHER_CITY_VALUE, WORLD_COUNTRIES, getColombianCities, isColombia } from "@/lib/shippingAddress";
 
 function fmt(n: number) {
   return `$ ${n.toLocaleString("es-CO")}`;
@@ -20,7 +22,7 @@ export default function Checkout() {
   const { user, isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
   const [loading, setLoading] = useState(false);
-  const [payMethod, setPayMethod] = useState<"cod" | "wompi">("cod");
+  const [payMethod, setPayMethod] = useState<"cod" | "wompi" | "paypal">("cod");
   const [promoInput, setPromoInput] = useState("");
   const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountPercent: number } | null>(null);
   const [form, setForm] = useState({
@@ -28,8 +30,13 @@ export default function Checkout() {
     email: user?.email ?? "",
     phone: "",
     address: "",
+    addressLine2: "",
     city: "",
+    otherCity: "",
     department: "",
+    stateProvince: "",
+    postalCode: "",
+    country: "Colombia",
     notes: "",
   });
 
@@ -58,6 +65,9 @@ export default function Checkout() {
     const availableStock = item.variantId ? Math.min(productStock, Number(item.variantStock ?? 0)) : productStock;
     return item.quantity > availableStock;
   });
+  const isColombianAddress = isColombia(form.country);
+  const colombianCities = isColombianAddress ? getColombianCities(form.department) : [];
+  const shippingSummary = isColombianAddress ? "Gratis" : "Por confirmar";
 
   const applyPromoCode = async () => {
     if (!promoInput.trim()) { toast.error("Escribe un código promocional"); return; }
@@ -72,11 +82,22 @@ export default function Checkout() {
     toast.error("El código promocional no es válido o está inactivo");
   };
 
+  const goToPayPalCheckout = () => {
+    document.getElementById("paypal-hosted-button")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    toast.message("Completa el pago con el botón oficial de PayPal.");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (payMethod === "paypal") {
+      toast.message("Usa el botón seguro de PayPal para continuar con ese método de pago.");
+      return;
+    }
     if (items.length === 0) { toast.error("Tu carrito está vacío"); return; }
     if (hasInventoryIssue) { toast.error("Uno o más productos ya no tienen las existencias requeridas. Ajusta el carrito antes de continuar."); return; }
-    if (!form.fullName || !form.phone || !form.address || !form.city || !form.department) {
+    const city = isColombianAddress && form.city === OTHER_CITY_VALUE ? form.otherCity.trim() : form.city.trim();
+    const region = isColombianAddress ? form.department : form.stateProvince.trim();
+    if (!form.fullName.trim() || !form.phone.trim() || !form.address.trim() || !form.country || !city || !region || (!isColombianAddress && !form.postalCode.trim())) {
       toast.error("Completa todos los campos obligatorios"); return;
     }
     setLoading(true);
@@ -85,7 +106,18 @@ export default function Checkout() {
       total: String(orderTotal),
       subtotal: String(subtotal),
       promoCode: appliedPromo?.code,
-      shippingAddress: { fullName: form.fullName, address: form.address, city: form.city, department: form.department, phone: form.phone, notes: form.notes },
+      shippingAddress: {
+        fullName: form.fullName.trim(),
+        address: form.address.trim(),
+        addressLine2: form.addressLine2.trim() || undefined,
+        city,
+        department: region,
+        stateProvince: isColombianAddress ? undefined : region,
+        postalCode: form.postalCode.trim() || undefined,
+        country: form.country,
+        phone: form.phone.trim(),
+        notes: form.notes.trim() || undefined,
+      },
       paymentMethod: payMethod === "wompi" ? "wompi" : "contraentrega",
       sessionId: !isAuthenticated ? sessionId : undefined,
       items: items.map(item => ({
@@ -98,8 +130,25 @@ export default function Checkout() {
     });
   };
 
-  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const selectCountry = (country: string) => setForm((current) => ({
+    ...current,
+    country,
+    department: "",
+    city: "",
+    otherCity: "",
+    stateProvince: "",
+    postalCode: "",
+  }));
+
+  const selectDepartment = (department: string) => setForm((current) => ({
+    ...current,
+    department,
+    city: "",
+    otherCity: "",
+  }));
 
   if (items.length === 0) return (
     <div className="min-h-screen bg-white">
@@ -139,7 +188,7 @@ export default function Checkout() {
             <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-brand-green">Antonini Joyería</p>
             <h1 className="font-sans text-3xl font-medium tracking-[-0.035em] text-black md:text-4xl">Finaliza tu compra</h1>
           </div>
-          <p className="mt-3 max-w-xs text-sm leading-relaxed text-gray-500 md:mt-0 md:text-right">Piezas seleccionadas, envío gratis y acompañamiento durante tu compra.</p>
+          <p className="mt-3 max-w-xs text-sm leading-relaxed text-gray-500 md:mt-0 md:text-right">Piezas seleccionadas, dirección clara y acompañamiento durante tu compra.</p>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -187,20 +236,62 @@ export default function Checkout() {
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">País / territorio *</label>
+                    <select required value={form.country} onChange={(event) => selectCountry(event.target.value)} className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-black">
+                      {WORLD_COUNTRIES.map((country) => <option key={country} value={country}>{country}</option>)}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
                     <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Dirección completa *</label>
                     <input required value={form.address} onChange={f("address")} placeholder="Calle 53 # 25-33, Apto 201"
                       className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-black" />
                   </div>
-                  <div>
-                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Ciudad *</label>
-                    <input required value={form.city} onChange={f("city")} placeholder="Bogotá"
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Complemento de dirección</label>
+                    <input value={form.addressLine2} onChange={f("addressLine2")} placeholder="Apartamento, piso, torre, edificio o referencia"
                       className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-black" />
                   </div>
-                  <div>
-                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Departamento *</label>
-                    <input required value={form.department} onChange={f("department")} placeholder="Cundinamarca"
-                      className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-black" />
-                  </div>
+                  {isColombianAddress ? <>
+                    <div>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Departamento *</label>
+                      <select required value={form.department} onChange={(event) => selectDepartment(event.target.value)} className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-black">
+                        <option value="" disabled>Selecciona un departamento</option>
+                        {COLOMBIA_DEPARTMENTS.map((department) => <option key={department} value={department}>{department}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Ciudad / municipio *</label>
+                      <select required disabled={!form.department} value={form.city} onChange={f("city")} className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-black disabled:cursor-not-allowed disabled:bg-gray-100">
+                        <option value="" disabled>{form.department ? "Selecciona una ciudad" : "Primero selecciona departamento"}</option>
+                        {colombianCities.map((city) => <option key={city} value={city}>{city}</option>)}
+                        {form.department && <option value={OTHER_CITY_VALUE}>Otra ciudad / municipio</option>}
+                      </select>
+                    </div>
+                    {form.city === OTHER_CITY_VALUE && <div className="md:col-span-2">
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Escribe tu ciudad o municipio *</label>
+                      <input required value={form.otherCity} onChange={f("otherCity")} placeholder="Ej: La Ceja"
+                        className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-black" />
+                    </div>}
+                  </> : <>
+                    <div>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Ciudad *</label>
+                      <input required value={form.city} onChange={f("city")} placeholder="Ciudad de destino"
+                        className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-black" />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Estado / provincia / región *</label>
+                      <input required value={form.stateProvince} onChange={f("stateProvince")} placeholder="Estado, provincia o región"
+                        className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-black" />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Código postal *</label>
+                      <input required value={form.postalCode} onChange={f("postalCode")} placeholder="Código postal"
+                        className="w-full rounded-none border border-black/25 bg-white px-4 py-3 text-sm outline-none transition-colors placeholder:text-gray-400 focus:border-black" />
+                    </div>
+                  </>}
+                  {!isColombianAddress && <div className="md:col-span-2 border border-brand-green/20 bg-brand-green/5 p-3 text-xs leading-relaxed text-gray-600">
+                    Para envíos internacionales, confirmaremos la cobertura y el valor de transporte antes del despacho. DHL puede estar disponible según el destino.
+                  </div>}
                   <div className="md:col-span-2">
                     <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.14em] text-gray-600">Notas adicionales</label>
                     <textarea value={form.notes} onChange={f("notes")} rows={2} placeholder="Instrucciones especiales para la entrega..."
@@ -219,12 +310,13 @@ export default function Checkout() {
                   {[
                     { id: "cod" as const, icon: Truck, title: "Pago contra entrega", sub: "Pagas cuando recibes tu joya" },
                     { id: "wompi" as const, icon: Lock, title: "Wompi", sub: "Pago seguro con tarjeta, PSE o transferencia" },
+                    { id: "paypal" as const, icon: Shield, title: "PayPal", sub: "Pago seguro mediante PayPal" },
                   ].map(({ id, icon: Icon, title, sub }) => (
                     <button key={id} type="button" onClick={() => setPayMethod(id)}
                       className={`flex items-center gap-3 border p-4 text-left transition-all ${payMethod === id ? "border-black bg-black text-white" : "border-black/20 bg-white hover:border-black"}`}>
-                      {id === "wompi" ? <img src={WOMPI_PAYMENT_BUTTON_IMAGE} alt="Paga con Wompi" className="h-11 w-auto max-w-[160px] object-contain" /> : <Icon size={20} className={payMethod === id ? "text-white" : "text-gray-500"} />}
+                      {id === "wompi" ? <img src={WOMPI_PAYMENT_BUTTON_IMAGE} alt="Paga con Wompi" className="h-11 w-auto max-w-[160px] object-contain" /> : id === "paypal" ? <span aria-label="PayPal" className="text-xl font-black tracking-[-0.08em]"><span className="text-[#003087]">Pay</span><span className="text-[#009cde]">Pal</span></span> : <Icon size={20} className={payMethod === id ? "text-white" : "text-gray-500"} />}
                       <div className="flex-1">
-                        {id !== "wompi" && <p className={`text-sm font-bold ${payMethod === id ? "text-white" : "text-gray-800"}`}>{title}</p>}
+                        {id !== "wompi" && id !== "paypal" && <p className={`text-sm font-bold ${payMethod === id ? "text-white" : "text-gray-800"}`}>{title}</p>}
                         <p className={`text-xs ${payMethod === id ? "text-white/75" : "text-gray-500"}`}>{sub}</p>
                       </div>
                       <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${payMethod === id ? "border-white bg-white" : "border-gray-300"}`}>
@@ -238,9 +330,10 @@ export default function Checkout() {
                     Al finalizar tu compra se abrirá una página con 10 minutos para pagar, confirmar el pago y enviar el comprobante por WhatsApp.
                   </div>
                 )}
+                {payMethod === "paypal" && <PayPalHostedButton />}
                 <div className="mt-5 flex items-start gap-3 border border-brand-green/20 bg-brand-green/5 p-4 text-sm text-gray-700">
                   <Truck size={20} className="mt-0.5 shrink-0 text-brand-green" />
-                  <div><strong className="text-brand-green">Envíos con Coordinadora, Inter Rapidísimo o DHL.</strong><p className="mt-1 text-xs leading-relaxed text-gray-600">Asignaremos la transportadora y la guía al despachar tu pedido; podrás consultarlas con tu número de pedido.</p></div>
+                  <div><strong className="text-brand-green">Envíos en Colombia y al exterior con Coordinadora, Inter Rapidísimo o DHL.</strong><p className="mt-1 text-xs leading-relaxed text-gray-600">Asignaremos la transportadora y la guía al despachar tu pedido; podrás consultarlas con tu número de pedido.</p></div>
                 </div>
               </section>
             </div>
@@ -295,7 +388,7 @@ export default function Checkout() {
                   <div className="flex justify-between text-sm text-gray-500"><span>Subtotal</span><span>{fmt(subtotalBeforePopupDiscount)}</span></div>
                   {popupDiscountAmount > 0 && <div className="flex justify-between text-sm text-brand-green"><span>Oferta popup{popupDiscountPercent ? ` · ${popupDiscountPercent}%` : ""}</span><span>-{fmt(popupDiscountAmount)}</span></div>}
                   {appliedPromo && <div className="flex justify-between text-sm text-brand-green"><span>Descuento · {appliedPromo.code}</span><span>-{fmt(promoDiscountAmount)}</span></div>}
-                  <div className="flex justify-between text-sm"><span className="text-gray-500">Envío</span><span className="font-semibold text-brand-green">Gratis</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Envío</span><span className={`font-semibold ${isColombianAddress ? "text-brand-green" : "text-gray-700"}`}>{shippingSummary}</span></div>
                   <div className="flex justify-between border-t border-black pt-3 text-base font-bold text-gray-900">
                     <span>Total</span>
                     <span>{fmt(orderTotal)}</span>
@@ -304,18 +397,20 @@ export default function Checkout() {
 
                 <div className="px-5 pb-5">
                   {hasInventoryIssue && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium leading-snug text-red-600">Hay productos sin existencias suficientes. Ajusta la cantidad en tu carrito para continuar.</p>}
-                  <button type={"submit"} disabled={loading || createOrder.isPending || hasInventoryIssue}
+                  <button type={payMethod === "paypal" ? "button" : "submit"} onClick={payMethod === "paypal" ? goToPayPalCheckout : undefined} disabled={loading || createOrder.isPending || hasInventoryIssue}
                     className="flex w-full items-center justify-center gap-2 bg-black py-4 text-xs font-bold uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#343434] disabled:opacity-60">
                     {loading || createOrder.isPending
                       ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Procesando...</>
                       : hasInventoryIssue
                         ? <><Lock size={15} /> Ajusta el inventario del carrito</>
+                        : payMethod === "paypal"
+                          ? <><Lock size={15} /> Finalizar pago</>
                         : <><Lock size={15} /> Finalizar compra · {fmt(orderTotal)}</>
                     }
                   </button>
                   <div className="mt-4 flex items-center justify-center gap-4">
                     <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500"><Shield size={11} /> Compra segura</span>
-                    <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500"><Truck size={11} /> Envío gratis</span>
+                    <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500"><Truck size={11} /> {isColombianAddress ? "Envío gratis Colombia" : "Costo por confirmar"}</span>
                   </div>
                 </div>
               </aside>

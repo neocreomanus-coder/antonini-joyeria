@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { startLogin } from "@/const";
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Package, Tag, ShoppingCart, LogOut, Store, ChevronRight, Menu, Video, Sparkles, PanelsTopLeft, Images, BadgePercent } from "lucide-react";
+import { LayoutDashboard, Package, Tag, ShoppingCart, LogOut, Store, ChevronRight, Menu, Video, Sparkles, Images, BadgePercent } from "lucide-react";
 import { LoginPage } from "./login";
 
 const NAV = [
@@ -12,7 +12,6 @@ const NAV = [
   { href: "/admin/categorias", label: "Categorías", icon: Tag },
   { href: "/admin/pedidos", label: "Pedidos", icon: ShoppingCart },
   { href: "/admin/hero", label: "Hero / Video", icon: Video },
-  { href: "/admin/promociones", label: "Carrusel Promo", icon: PanelsTopLeft },
   { href: "/admin/entregas", label: "Entregas Seguras", icon: Images },
   { href: "/admin/popup", label: "Popup Oferta", icon: Sparkles },
   { href: "/admin/codigos-promocionales", label: "Códigos Promo", icon: BadgePercent },

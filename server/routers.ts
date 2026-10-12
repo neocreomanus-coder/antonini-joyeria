@@ -228,8 +228,16 @@ const ordersRouter = router({
     total: z.string().optional(), subtotal: z.string().optional(),
     promoCode: z.string().trim().max(64).optional(),
     shippingAddress: z.object({
-      fullName: z.string(), address: z.string(), city: z.string(),
-      department: z.string(), phone: z.string(), notes: z.string().optional(),
+      fullName: z.string().trim().min(1).max(160),
+      address: z.string().trim().min(1).max(240),
+      addressLine2: z.string().trim().max(160).optional(),
+      city: z.string().trim().min(1).max(120),
+      department: z.string().trim().min(1).max(120),
+      stateProvince: z.string().trim().max(120).optional(),
+      postalCode: z.string().trim().max(32).optional(),
+      country: z.string().trim().min(1).max(120).optional(),
+      phone: z.string().trim().min(1).max(40),
+      notes: z.string().trim().max(1000).optional(),
     }),
     stripePaymentIntentId: z.string().optional(),
     paymentMethod: z.enum(["contraentrega", "wompi"]),
@@ -372,8 +380,20 @@ const siteConfigRouter = router({
 
   // Admin: update hero video URL
   updateHeroVideo: adminProcedure
-    .input(z.object({ videoUrl: z.string().url().nullable() }))
-    .mutation(({ input }) => db.updateSiteConfig("hero_video_url", input.videoUrl)),
+    // Support both our R2 /manus-storage relative URLs and secure https media URLs.
+    .input(z.object({ videoUrl: z.string().min(1).max(1000).refine(
+      (value) => value.startsWith("/manus-storage/") || /^https:\/\//i.test(value),
+      "Usa un video almacenado o una URL HTTPS"
+    ).nullable(),
+      posterUrl: z.string().max(1000).refine(
+        (value) => value.startsWith("/manus-storage/") || /^https:\/\//i.test(value),
+        "La portada debe estar almacenada o utilizar HTTPS"
+      ).nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.posterUrl !== undefined) await db.updateSiteConfig("hero_poster_url", input.posterUrl);
+      return db.updateSiteConfig("hero_video_url", input.videoUrl);
+    }),
 
   // Admin: update hero fallback image
   updateHeroImage: adminProcedure
@@ -450,23 +470,6 @@ const siteConfigRouter = router({
 
   // Public: read popup config
   getPopup: publicProcedure.query(() => db.getPopupConfig()),
-
-  // Public: read independent promotional carousel
-  getPromoCarousel: publicProcedure.query(() => db.getPromoCarouselConfig()),
-
-  // Admin: save promotional carousel slides and automatic rotation interval
-  updatePromoCarousel: adminProcedure
-    .input(z.object({
-      intervalMs: z.number().min(3000).max(15000),
-      slides: z.array(z.object({
-        id: z.string().min(1),
-        mediaUrl: z.string().min(1),
-        mediaType: z.enum(["image", "video"]),
-        ctaLabel: z.string().min(1).max(40),
-        ctaHref: z.string().min(1).max(240),
-      })).max(12),
-    }))
-    .mutation(({ input }) => db.updatePromoCarouselConfig(input)),
 
   // Public: read delivery photos shown in the trust gallery
   getDeliveryPhotos: publicProcedure.query(() => db.getDeliveryPhotosConfig()),

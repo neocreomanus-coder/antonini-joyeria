@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import OrderPdfButton from "@/components/OrderPdfButton";
 import { Package, ChevronLeft, MapPin, Phone } from "lucide-react";
+import { formatShippingAddress } from "@/lib/shippingAddress";
 
 const STATUS_LABELS: Record<string, { label: string; color: string; step: number }> = {
   pendiente: { label: "Pendiente", color: "bg-yellow-100 text-yellow-800", step: 0 },
@@ -123,7 +124,7 @@ export default function OrderDetail() {
               {addr && (
                 <div className="space-y-2 text-sm text-[oklch(0.35_0.02_60)]">
                   <p className="font-semibold text-[oklch(0.18_0.02_60)]">{addr.fullName}</p>
-                  <div className="flex items-start gap-2"><MapPin className="w-4 h-4 text-[oklch(0.62_0.12_75)] mt-0.5 shrink-0" /><span>{addr.address}, {addr.city}, {addr.department}</span></div>
+                  <div className="flex items-start gap-2"><MapPin className="w-4 h-4 text-[oklch(0.62_0.12_75)] mt-0.5 shrink-0" /><span>{formatShippingAddress(addr)}</span></div>
                   <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-[oklch(0.62_0.12_75)] shrink-0" /><span>{addr.phone}</span></div>
                   {addr.notes && <p className="text-[oklch(0.52_0.02_60)] italic">{addr.notes}</p>}
                 </div>

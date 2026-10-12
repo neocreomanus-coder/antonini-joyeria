@@ -1,5 +1,5 @@
 import { Video } from "lucide-react";
-import HeroCarouselEditor from "./HeroCarouselEditor";
+import HeroVideoEditor from "./HeroVideoEditor";
 
 export default function AdminHero() {
   return (
@@ -14,7 +14,7 @@ export default function AdminHero() {
         </div>
       </div>
 
-      <HeroCarouselEditor />
+      <HeroVideoEditor />
     </div>
   );
 }

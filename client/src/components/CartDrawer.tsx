@@ -218,7 +218,7 @@ export default function CartDrawer() {
               </div>
             </div>
 
-            <p className="text-[11px] text-gray-400 text-center">Envío gratis a todo Colombia · Pago al recibir</p>
+            <p className="text-[11px] text-gray-400 text-center">Envío gratis en Colombia · Pago al recibir</p>
 
             <Link href="/checkout" onClick={closeCart}
               className="flex items-center justify-center gap-2 w-full bg-brand-green text-white py-3.5 rounded-xl font-semibold text-sm hover:bg-brand-green-light transition-colors shadow-md active:scale-[0.98]">
